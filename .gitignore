@@ -1,0 +1,16 @@
+**/data/
+**/.env
+.env
+pihole/etc-pihole/
+docs/
+**/secrets/
+**/certs/
+**/db-dumps/
+authelia/config/users_database.yml
+
+# SOPS / age safety
+*.plain.yaml
+keys.txt
+*.agekey
+*-age-key.txt
+age-backup-key.txt

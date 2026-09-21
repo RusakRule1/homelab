@@ -1,0 +1,92 @@
+groups:
+  - name: monitoring-pipeline
+    rules:
+      - alert: MonitoringTargetDown
+        expr: up == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Monitoring target down: {{ $labels.job }}"
+          description: "Prometheus cannot scrape {{ $labels.job }} ({{ $labels.instance }}) for >2m."
+
+      - alert: CollectorNotPushing
+        expr: up{job="alloy"} == 0
+        for: 3m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Alloy collector is down"
+          description: "Grafana Alloy hasn't been scrapable for >3m — host and container metrics are stale."
+
+  - name: host
+    rules:
+      - alert: HostHighCPU
+        expr: 100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 90
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU on {{ $labels.instance }}"
+          description: "CPU usage has been >90% for 10m (current: {{ printf \"%.0f\" $value }}%)."
+
+      - alert: HostHighMemory
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 90
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory on {{ $labels.instance }}"
+          description: "Memory usage has been >90% for 10m (current: {{ printf \"%.0f\" $value }}%)."
+
+      - alert: HostLowDisk
+        expr: |
+          (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|squashfs|ramfs"}
+            / node_filesystem_size_bytes{fstype!~"tmpfs|overlay|squashfs|ramfs"}) * 100 < 10
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Low disk on {{ $labels.instance }} ({{ $labels.mountpoint }})"
+          description: "Free space <10% (current: {{ printf \"%.1f\" $value }}%)."
+
+      - alert: HostDiskWillFillIn24h
+        expr: |
+          predict_linear(node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|squashfs|ramfs"}[6h], 24*3600) < 0
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "Disk will fill within 24h on {{ $labels.instance }} ({{ $labels.mountpoint }})"
+          description: "At the current growth rate this filesystem runs out of space in <24h."
+
+  - name: containers
+    rules:
+      - alert: ContainerOOMKilled
+        expr: increase(container_oom_events_total{name!=""}[5m]) > 0
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Container OOM-killed: {{ $labels.name }}"
+          description: "{{ $labels.name }} was OOM-killed in the last 5m — its memory limit is likely too low."
+
+      - alert: ContainerRestartLoop
+        expr: changes(container_start_time_seconds{name!=""}[15m]) > 2
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Container restart loop: {{ $labels.name }}"
+          description: "{{ $labels.name }} restarted more than twice in 15m."
+
+      - alert: ContainerHighMemory
+        expr: |
+          (container_memory_usage_bytes{name!=""} / container_spec_memory_limit_bytes{name!=""} > 0.90)
+            and (container_spec_memory_limit_bytes{name!=""} > 0)
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Container near memory limit: {{ $labels.name }}"
+          description: "{{ $labels.name }} has used >90% of its memory limit for 10m — expect an OOM kill soon."

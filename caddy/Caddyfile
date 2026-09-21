@@ -1,0 +1,73 @@
+(secure_headers) {
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Frame-Options "DENY"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+}
+
+(authelia) {
+    forward_auth authelia:9091 {
+        uri /api/authz/forward-auth
+        copy_headers Remote-User Remote-Groups Remote-Email Remote-Name
+    }
+}
+
+auth.home.lan {
+    tls internal
+    import secure_headers
+    reverse_proxy authelia:9091
+}
+
+kuma.home.lan {
+	tls internal
+	import secure_headers
+	import authelia
+	reverse_proxy uptime-kuma:3001
+}
+
+pihole.home.lan {
+	tls internal
+	import secure_headers
+	import authelia
+	reverse_proxy pihole:80
+}
+
+nextcloud.home {
+    tls internal
+    import secure_headers
+    redir /.well-known/carddav /remote.php/dav 301
+    redir /.well-known/caldav /remote.php/dav 301
+    reverse_proxy nextcloud:80
+}
+
+grafana.home.lan {
+    tls internal
+    import secure_headers
+    reverse_proxy grafana:3000
+}
+
+dozzle.home.lan {
+    tls internal
+    import secure_headers
+    import authelia
+    reverse_proxy dozzle:8080
+}
+
+prometheus.home.lan {
+    tls internal
+    import secure_headers
+    import authelia
+    reverse_proxy prometheus:9090
+}
+
+alertmanager.home.lan {
+    tls internal
+    import secure_headers
+    import authelia
+    reverse_proxy alertmanager:9093
+}
+
+

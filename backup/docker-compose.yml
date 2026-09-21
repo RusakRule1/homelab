@@ -1,0 +1,75 @@
+x-restic-common: &restic-common
+  image: mazzolino/restic:1.8.0
+  restart: unless-stopped
+  profiles: ["backup"]
+  security_opt:
+    - no-new-privileges:true
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+  environment: &restic-env
+    TZ: "Europe/Zagreb"
+    RESTIC_REPOSITORY: "rclone:b2:rule-homelab-backup/homelab"
+    RCLONE_CONFIG: /run/secrets/rclone_config
+    RESTIC_PASSWORD_FILE: /run/secrets/restic_password
+  secrets:
+    - rclone_config
+    - restic_password
+
+services:
+  backup:
+    <<: *restic-common
+    container_name: restic-backup
+    hostname: homelab
+    environment:
+      <<: *restic-env
+      BACKUP_CRON: "0 30 3 * * *"
+      RUN_ON_STARTUP: "false"
+      RESTIC_BACKUP_SOURCES: "/data"
+      RESTIC_BACKUP_ARGS: "--tag homelab --exclude-caches"
+      RESTIC_FORGET_ARGS: "--keep-last 3 --keep-daily 7 --keep-weekly 4 --keep-monthly 6"
+    deploy:
+      resources:
+        limits: { cpus: "0.50", memory: 256M }
+        reservations: { memory: 64M }
+    volumes:
+      - ../uptime-kuma/data:/data/uptime-kuma:ro
+      - ../pihole/etc-pihole:/data/pihole:ro
+      - ../diun/data:/data/diun:ro
+      - ../nextcloud/data/nextcloud:/data/nextcloud-files:ro   # user files + config (NOT the raw postgres dir)
+      - ../nextcloud/db-dumps:/data/nextcloud-db:ro            # consistent pg_dump output (the DB)
+    labels:
+      - "diun.watch_repo=true"
+      - "diun.sort_tags=semver"
+      - "diun.max_tags=5"
+      - "diun.include_tags=^v?[0-9]+\\.[0-9]+\\.[0-9]+$$"
+
+  prune:
+    <<: *restic-common
+    container_name: restic-prune
+    environment:
+      <<: *restic-env
+      PRUNE_CRON: "0 0 4 * * 0"
+    deploy:
+      resources:
+        limits: { cpus: "0.50", memory: 512M }
+        reservations: { memory: 128M }
+
+  check:
+    <<: *restic-common
+    container_name: restic-check
+    environment:
+      <<: *restic-env
+      CHECK_CRON: "0 30 4 * * 0"
+    deploy:
+      resources:
+        limits: { cpus: "0.50", memory: 256M }
+        reservations: { memory: 64M }
+
+secrets:
+  rclone_config:
+    file: ./secrets/rclone.conf
+  restic_password:
+    file: ./secrets/restic_password

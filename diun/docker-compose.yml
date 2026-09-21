@@ -1,0 +1,72 @@
+services:
+  diun-socket-proxy:
+    image: lscr.io/linuxserver/socket-proxy:3.4.4
+    container_name: diun-socket-proxy
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits: { cpus: "0.25", memory: 64M }
+        reservations: { memory: 16M }
+    environment:
+      CONTAINERS: 1
+      IMAGES: 1
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+  diun:
+    image: crazymax/diun:4.33.0
+    container_name: diun
+    command: serve
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits: { cpus: "0.25", memory: 128M }
+        reservations: { memory: 32M }
+    environment:
+      TZ: "Europe/Zagreb"
+      LOG_LEVEL: "info"
+      DIUN_WATCH_SCHEDULE: "0 8 * * *"
+      DIUN_WATCH_FIRSTCHECKNOTIF: "false"
+      DIUN_PROVIDERS_DOCKER: "true"
+      DIUN_PROVIDERS_DOCKER_ENDPOINT: "tcp://diun-socket-proxy:2375"
+      DIUN_PROVIDERS_DOCKER_WATCHBYDEFAULT: "true"
+      DIUN_NOTIF_TELEGRAM_TOKENFILE: "/run/secrets/telegram_token"
+      DIUN_NOTIF_TELEGRAM_CHATIDSFILE: "/run/secrets/telegram_chatid"
+    volumes:
+      - ./data:/data
+    depends_on:
+      - diun-socket-proxy
+    secrets:
+      - telegram_token
+      - telegram_chatid
+    labels:
+      - "diun.watch_repo=true"
+      - "diun.sort_tags=semver"
+      - "diun.max_tags=5"
+      - "diun.include_tags=^v?[0-9]+\\.[0-9]+\\.[0-9]+$$"
+    healthcheck:
+      test: ["CMD", "diun", "healthcheck"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+
+secrets:
+  telegram_token:
+    file: ./secrets/telegram_token
+  telegram_chatid:
+    file: ./secrets/telegram_chatid

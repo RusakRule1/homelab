@@ -1,0 +1,92 @@
+services:
+  authelia:
+    image: authelia/authelia:4.39.28
+    container_name: authelia
+    restart: unless-stopped
+    user: "1000:1000"
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits: { cpus: "0.50", memory: 192M }
+        reservations: { memory: 64M }
+    environment:
+      TZ: "Europe/Zagreb"
+      AUTHELIA_SESSION_SECRET_FILE: /run/secrets/authelia_session_secret
+      AUTHELIA_STORAGE_ENCRYPTION_KEY_FILE: /run/secrets/authelia_storage_encryption_key
+      AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET_FILE: /run/secrets/authelia_jwt_secret
+      AUTHELIA_IDENTITY_PROVIDERS_OIDC_HMAC_SECRET_FILE: /run/secrets/authelia_oidc_hmac_secret
+      AUTHELIA_SESSION_REDIS_PASSWORD_FILE: /run/secrets/authelia_redis_password
+      X_AUTHELIA_CONFIG_FILTERS: template
+    volumes:
+      - ./config:/config
+      - ./data:/data
+    secrets:
+      - authelia_session_secret
+      - authelia_storage_encryption_key
+      - authelia_jwt_secret
+      - authelia_oidc_hmac_secret
+      - authelia_oidc_jwks_key
+      - authelia_redis_password
+    networks:
+      - proxy
+      - authelia-internal
+    labels:
+      - "diun.watch_repo=true"
+      - "diun.sort_tags=semver"
+      - "diun.max_tags=5"
+      - "diun.include_tags=^v?[0-9]+\\.[0-9]+\\.[0-9]+$$"
+    depends_on:
+      authelia-redis:
+        condition: service_healthy
+
+  authelia-redis:
+    image: redis:7.4.11-alpine3.21
+    container_name: authelia-redis
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+    deploy:
+      resources:
+        limits: { cpus: "0.25", memory: 96M }
+        reservations: { memory: 16M }
+    command:
+      ["sh", "-c", 'exec redis-server --requirepass "$$(cat /run/secrets/authelia_redis_password)" --save "" --appendonly no']
+    secrets:
+      - authelia_redis_password
+    networks:
+      - authelia-internal
+    healthcheck:
+      test: ["CMD-SHELL", 'redis-cli -a "$$(cat /run/secrets/authelia_redis_password)" --no-auth-warning ping | grep -q PONG']
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+networks:
+  proxy:
+    external: true
+  authelia-internal:
+    internal: true
+
+secrets:
+  authelia_session_secret:
+    file: ./secrets/session_secret
+  authelia_storage_encryption_key:
+    file: ./secrets/storage_encryption_key
+  authelia_jwt_secret:
+    file: ./secrets/jwt_secret
+  authelia_oidc_hmac_secret:
+    file: ./secrets/oidc_hmac_secret
+  authelia_oidc_jwks_key:
+    file: ./secrets/oidc_jwks_key
+  authelia_redis_password:
+    file: ./secrets/redis_password

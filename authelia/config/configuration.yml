@@ -1,0 +1,121 @@
+theme: "light"
+
+server:
+  address: "tcp://0.0.0.0:9091"
+
+log:
+  level: "info"
+  format: "text"
+
+totp:
+  issuer: "auth.home.lan"
+
+identity_validation:
+  reset_password:
+    jwt_lifespan: "5 minutes"
+
+authentication_backend:
+  password_reset:
+    disable: false
+  file:
+    path: "/config/users_database.yml"
+    watch: true
+    password:
+      algorithm: "argon2"
+
+access_control:
+  default_policy: "deny"
+  rules:
+    - domain: "auth.home.lan"
+      policy: "bypass"
+    - domain: "kuma.home.lan"
+      resources:
+        - "^/status.*"
+        - "^/api/status-page.*"
+        - "^/api/push/.*"
+        - "^/api/badge/.*"
+        - "^/assets/.*"
+        - "^/icon.*"
+        - "^/upload/.*"
+        - '^/manifest\.json$'
+      policy: "bypass"
+    - domain: "kuma.home.lan"
+      policy: "two_factor"
+    - domain: "pihole.home.lan"
+      policy: "two_factor"
+    - domain: "dozzle.home.lan"
+      policy: "two_factor"
+    - domain: "prometheus.home.lan"
+      policy: "two_factor"
+    - domain: "alertmanager.home.lan"
+      policy: "two_factor"
+
+session:
+  name: "authelia_session"
+  same_site: "lax"
+  inactivity: "30 minutes"
+  expiration: "12 hours"
+  remember_me: "1 month"
+  redis:
+    host: authelia-redis
+    port: 6379
+  cookies:
+    - domain: "home.lan"
+      authelia_url: "https://auth.home.lan"
+      default_redirection_url: "https://kuma.home.lan"
+
+regulation:
+  max_retries: 3
+  find_time: "2 minutes"
+  ban_time: "5 minutes"
+
+storage:
+  local:
+    path: "/data/db.sqlite3"
+
+notifier:
+  filesystem:
+    filename: "/data/notification.txt"
+
+identity_providers:
+  oidc:
+    jwks:
+      - key_id: "main"
+        algorithm: "RS256"
+        use: "sig"
+        key: {{ secret "/run/secrets/authelia_oidc_jwks_key" | mindent 10 "|" | msquote }}
+    claims_policies:
+      grafana:
+        id_token: ["email", "name", "groups", "preferred_username"]
+    clients:
+      - client_id: "nextcloud"
+        client_name: "Nextcloud"
+        client_secret: "$pbkdf2-sha512$310000$AJGxEoAgVSLS1z5zFZJB.w$.4PDJlUaPKBguPJWUxs9mqua1aM6SPiDQMFnBIiQWnC.6t9KPtP5/8DvjykaFxIwkXpByN.SOv5akj0l8ZoR.g"
+        public: false
+        authorization_policy: "two_factor"
+        require_pkce: true
+        pkce_challenge_method: "S256"
+        redirect_uris:
+          - "https://nextcloud.home/apps/user_oidc/code"
+        scopes: ["openid", "profile", "email", "groups"]
+        response_types: ["code"]
+        grant_types: ["authorization_code"]
+        access_token_signed_response_alg: "none"
+        userinfo_signed_response_alg: "none"
+        token_endpoint_auth_method: "client_secret_post"
+      - client_id: "grafana"
+        client_name: "Grafana"
+        client_secret: "$pbkdf2-sha512$310000$Yi2Gd/iJ8EQb1aWukZT6WQ$ulWPrYcj7PL2IayPKIe7cXYRtDqPE6YLSDmXilqVEtAZCP27YN0e4YR5L5IrsH0BJ.PL0KG3Dmo9wS6dvT9XRA"
+        public: false
+        authorization_policy: "two_factor"
+        require_pkce: true
+        pkce_challenge_method: "S256"
+        claims_policy: "grafana"
+        redirect_uris:
+          - "https://grafana.home.lan/login/generic_oauth"
+        scopes: ["openid", "profile", "email", "groups"]
+        response_types: ["code"]
+        grant_types: ["authorization_code"]
+        access_token_signed_response_alg: "none"
+        userinfo_signed_response_alg: "none"
+        token_endpoint_auth_method: "client_secret_basic"

@@ -1,0 +1,193 @@
+services:
+  nextcloud:
+    image: nextcloud:34.0.4-apache
+    container_name: nextcloud
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits: { cpus: "1.0", memory: 1024M }
+        reservations: { memory: 256M }
+    environment:
+      TZ: "Europe/Zagreb"
+      POSTGRES_HOST: postgres
+      POSTGRES_DB: nextcloud
+      POSTGRES_USER: nextcloud
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      REDIS_HOST: redis
+      REDIS_HOST_PORT: "6379"
+      REDIS_HOST_PASSWORD_FILE: /run/secrets/redis_password
+      NEXTCLOUD_ADMIN_USER: admin
+      NEXTCLOUD_ADMIN_PASSWORD_FILE: /run/secrets/nextcloud_admin_password
+      NEXTCLOUD_TRUSTED_DOMAINS: "nextcloud.home localhost nextcloud"
+      OVERWRITEPROTOCOL: "https"
+      OVERWRITECLIURL: "https://nextcloud.home"
+      TRUSTED_PROXIES: "172.16.0.0/12"
+      PHP_UPLOAD_LIMIT: "2G"
+    volumes:
+      - ./data/nextcloud:/var/www/html
+    secrets:
+      - postgres_password
+      - redis_password
+      - nextcloud_admin_password
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - proxy
+      - internal
+    labels:
+      - "diun.watch_repo=true"
+      - "diun.sort_tags=semver"
+      - "diun.max_tags=5"
+      - "diun.include_tags=^[0-9]+\\.[0-9]+\\.[0-9]+-apache$$"
+
+  postgres:
+    image: postgres:17.4-alpine
+    container_name: nextcloud-postgres
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits: { cpus: "0.75", memory: 512M }
+        reservations: { memory: 128M }
+    environment:
+      TZ: "Europe/Zagreb"
+      POSTGRES_DB: nextcloud
+      POSTGRES_USER: nextcloud
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    secrets:
+      - postgres_password
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nextcloud -d nextcloud"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    labels:
+      - "diun.watch_repo=true"
+      - "diun.sort_tags=semver"
+      - "diun.max_tags=5"
+      - "diun.include_tags=^17\\.[0-9]+-alpine$$"
+
+  redis:
+    image: redis:7.4.11-alpine3.21
+    container_name: nextcloud-redis
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits: { cpus: "0.25", memory: 128M }
+        reservations: { memory: 32M }
+    command:
+      [
+        "sh",
+        "-c",
+        'exec redis-server --requirepass "$$(cat /run/secrets/redis_password)" --save "" --appendonly no',
+      ]
+    secrets:
+      - redis_password
+    networks:
+      - internal
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'redis-cli -a "$$(cat /run/secrets/redis_password)" --no-auth-warning ping | grep -q PONG',
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    labels:
+      - "diun.watch_repo=true"
+      - "diun.sort_tags=semver"
+      - "diun.max_tags=5"
+      - "diun.include_tags=^7\\.[0-9]+\\.[0-9]+-alpine3\\.[0-9]+$$"
+
+  db-dump:
+    image: postgres:17.4-alpine
+    container_name: nextcloud-db-dump
+    restart: unless-stopped
+    profiles: ["dump"]
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits: { cpus: "0.25", memory: 128M }
+        reservations: { memory: 16M }
+    environment:
+      TZ: "Europe/Zagreb"
+      PGHOST: postgres
+      PGUSER: nextcloud
+      PGDATABASE: nextcloud
+    volumes:
+      - ./db-dumps:/dumps
+    secrets:
+      - postgres_password
+    networks:
+      - internal
+    depends_on:
+      postgres:
+        condition: service_healthy
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        export PGPASSWORD="$$(cat /run/secrets/postgres_password)"
+        while true; do
+          ts="$$(date +%Y%m%d-%H%M%S)"
+          echo "[db-dump] $$ts starting pg_dump"
+          if pg_dump -Fc -f "/dumps/nextcloud-$$ts.dump.part"; then
+            mv "/dumps/nextcloud-$$ts.dump.part" "/dumps/nextcloud-$$ts.dump"
+            echo "[db-dump] wrote nextcloud-$$ts.dump"
+          else
+            echo "[db-dump] pg_dump FAILED" >&2
+            rm -f "/dumps/nextcloud-$$ts.dump.part"
+          fi
+          ls -1t /dumps/nextcloud-*.dump 2>/dev/null | tail -n +8 | xargs -r rm -f
+          sleep 86400
+        done
+
+networks:
+  proxy:
+    external: true
+  internal:
+    internal: true
+
+secrets:
+  postgres_password:
+    file: ./secrets/postgres_password
+  redis_password:
+    file: ./secrets/redis_password
+  nextcloud_admin_password:
+    file: ./secrets/nextcloud_admin_password
