@@ -1,0 +1,10 @@
+---
+- name: Install Docker and secret tooling (pacman)
+  community.general.pacman:
+    name:
+      - docker
+      - docker-compose
+      - sops
+      - age
+    state: present
+    update_cache: true

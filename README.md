@@ -47,6 +47,8 @@ Databases and caches sit on segmented internal networks with no host ports.
 
 ## Structure
 - One folder per service, each with its own `docker-compose.yml`
+- `ansible/` + root `Makefile` — IaC that installs Docker, renders secrets, creates the
+  `proxy` net and deploys every stack (`make bootstrap`); turns a new-host bring-up into one command
 - Persistent data in `./<service>/data/` (or `./pihole/etc-pihole/`) - gitignored, copied on migration
 - Secrets as files in `./<service>/secrets/` - gitignored, recreated on migration
 - TLS: Caddy's **local CA + issued certs** live in `./caddy/data/` - gitignored; the CA is
@@ -101,9 +103,19 @@ Databases and caches sit on segmented internal networks with no host ports.
 Local `*.home` names resolve via `/etc/hosts` entries pointing at this machine.
 
 ## First-run / bootstrap
-> Manual for now; being codified as an **Ansible** playbook (see roadmap) so a mini-PC bring-up
-> becomes one command. Needs `sops`, `age`, `jq`, and your age private key at
-> `~/.config/sops/age/keys.txt` (carried out-of-band, never in git).
+**One command** — the whole thing is codified as Ansible (`ansible/`, wrapped by a `Makefile`):
+```bash
+make deps          # install the Ansible collections
+make bootstrap     # install Docker + render secrets + create proxy net + bring stacks up
+```
+It installs Docker (pacman on Arch / apt on Debian), decrypts the SOPS bundle into the
+per-service `secrets/` files, creates the external `proxy` network, and deploys every stack.
+The only prerequisite is your age private key at `~/.config/sops/age/keys.txt` (out-of-band,
+never in git). See `architecture/ansible.md` in the private docs.
+
+<details><summary>Or, by hand (what the playbook automates)</summary>
+
+Needs `sops`, `age`, `jq`, and your age private key at `~/.config/sops/age/keys.txt`.
 ```bash
 # 1. shared reverse-proxy network (external; all stacks attach to it)
 docker network create proxy
@@ -134,6 +146,7 @@ docker cp caddy:/data/caddy/pki/authorities/local/root.crt /tmp/caddy-root.crt
 sudo cp /tmp/caddy-root.crt /etc/ca-certificates/trust-source/anchors/caddy-root.crt
 sudo trust extract-compat                              # then restart browsers
 ```
+</details>
 
 ### Adding a new web service
 Add a site block to `caddy/Caddyfile`:

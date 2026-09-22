@@ -1,0 +1,22 @@
+---
+- name: Install and enable the Docker engine
+  hosts: homelab
+  gather_facts: true
+  roles:
+    - role: docker
+      become: true
+      tags: [docker, bootstrap]
+
+- name: Render secrets and deploy the stacks
+  hosts: homelab
+  gather_facts: false
+  pre_tasks:
+    - name: Reset connection so new docker-group membership applies
+      ansible.builtin.meta: reset_connection
+  roles:
+    - role: secrets
+      tags: [secrets]
+    - role: network
+      tags: [network, stacks]
+    - role: stacks
+      tags: [stacks]

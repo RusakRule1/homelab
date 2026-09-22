@@ -1,0 +1,15 @@
+---
+- name: Install Docker for this OS family
+  ansible.builtin.include_tasks: "{{ ansible_os_family }}.yml"
+
+- name: Enable and start the Docker service
+  ansible.builtin.systemd_service:
+    name: docker
+    enabled: true
+    state: started
+
+- name: Add the deploy user to the docker group
+  ansible.builtin.user:
+    name: "{{ homelab_user }}"
+    groups: docker
+    append: true

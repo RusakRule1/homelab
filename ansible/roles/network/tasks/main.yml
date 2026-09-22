@@ -1,0 +1,11 @@
+---
+- name: Check whether the shared proxy network exists
+  ansible.builtin.command: "docker network inspect {{ proxy_network }}"
+  register: network_proxy
+  changed_when: false
+  failed_when: false
+
+- name: Create the shared proxy network
+  ansible.builtin.command: "docker network create {{ proxy_network }}"
+  when: network_proxy.rc != 0
+  changed_when: true

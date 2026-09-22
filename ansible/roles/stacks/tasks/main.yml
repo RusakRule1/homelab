@@ -1,0 +1,19 @@
+---
+- name: Deploy the homelab stacks
+  community.docker.docker_compose_v2:
+    project_src: "{{ homelab_root }}/{{ item }}"
+    state: "{{ stack_state }}"
+    pull: "{{ 'missing' if stack_state == 'present' else 'never' }}"
+    remove_orphans: true
+  loop: "{{ homelab_stacks }}"
+  loop_control:
+    label: "{{ item }}"
+
+- name: Deploy the backup stack (profile-gated)
+  community.docker.docker_compose_v2:
+    project_src: "{{ homelab_root }}/backup"
+    profiles: [backup]
+    state: "{{ stack_state }}"
+    pull: "{{ 'missing' if stack_state == 'present' else 'never' }}"
+    remove_orphans: true
+  when: enable_backup | bool
