@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
-f=$(git diff --cached --name-only)
-if echo "$f" | grep -q "^secrets.sops.yaml$"; then
-  git show :secrets.sops.yaml | grep -q "^sops:" || { echo "BLOCK: bundle not encrypted"; exit 1; }
-fi
+f=$(git diff --cached --name-only --diff-filter=ACMR)
+for s in $(echo "$f" | grep -E '(^|/)secrets\.sops\.ya?ml$' || true); do
+  git show ":$s" | grep -q "^sops:" || { echo "BLOCK: $s not encrypted"; exit 1; }
+done
 git diff --cached -U0 | grep -q "AGE-SECRET-KEY-1" && { echo "BLOCK: age private key staged"; exit 1; }
 echo "$f" | grep -qE "(^|/)secrets/|keys.txt|age-key" && { echo "BLOCK: secret/key file staged"; exit 1; }
 exit 0

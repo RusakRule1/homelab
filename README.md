@@ -120,13 +120,15 @@ Needs `sops`, `age`, `jq`, and your age private key at `~/.config/sops/age/keys.
 # 1. shared reverse-proxy network (external; all stacks attach to it)
 docker network create proxy
 
-# 2. secrets - decrypt the committed SOPS bundle into the per-service secrets/ files,
+# 2. secrets - decrypt the committed per-service SOPS bundles into the secrets/ files,
 #    byte-exact with the right mode (see the "Secrets" section for the why):
-sops -d --output-type json secrets.sops.yaml \
-  | jq -r '.secrets[] | .path + "\t" + .mode + "\t" + .data' \
-  | while IFS=$'\t' read -r p m d; do
-      mkdir -p "$(dirname "$p")"; printf '%s' "$d" | base64 -d > "$p"; chmod "$m" "$p"
-    done
+for b in */secrets.sops.yaml; do
+  sops -d --output-type json "$b" \
+    | jq -r '.secrets[] | .path + "\t" + .mode + "\t" + .data' \
+    | while IFS=$'\t' read -r p m d; do
+        mkdir -p "$(dirname "$p")"; printf '%s' "$d" | base64 -d > "$p"; chmod "$m" "$p"
+      done
+done
 
 # 3. enable the repo's git hooks (blocks committing plaintext secrets / age keys)
 git config core.hooksPath .githooks
@@ -195,9 +197,12 @@ back-channel, alert rules, dashboards-as-code, gotchas) in `homelab-docs/monitor
 
 ## Secrets (SOPS + age)
 Every credential is committed to this **public** repo - safely - with
-[SOPS](https://github.com/getsops/sops) + [age](https://github.com/FiloSottile/age). All secrets
-live in one encrypted bundle, `secrets.sops.yaml`; only the **values** are encrypted (each `path`
-and `mode` stays cleartext, so `git diff` shows *which* secret changed, never the value).
+[SOPS](https://github.com/getsops/sops) + [age](https://github.com/FiloSottile/age). Secrets live in
+**per-service** encrypted files, `<service>/secrets.sops.yaml` (authelia/backup/diun/monitoring/
+nextcloud); only the **values** are encrypted (each `path` and `mode` stays cleartext, so `git diff`
+shows *which* secret changed, never the value). Per-file (vs one bundle) is the GitOps-idiomatic
+layout and lets a new service's secrets be added from a machine that has only the **public** keys
+(`sops encrypt` a new file needs no private key).
 
 - **One private key decrypts everything** - `~/.config/sops/age/keys.txt`, kept out-of-band
   (password manager), never in git. A second **backup recipient** key sits in offline cold storage
@@ -205,11 +210,11 @@ and `mode` stays cleartext, so `git diff` shows *which* secret changed, never th
 - **Deploy = decrypt to files.** Values are base64 of each secret's exact bytes; the render step in
   [bootstrap](#first-run--bootstrap) recreates every `*/secrets/<name>` file byte-exact with the
   right mode, and Compose bind-mounts them at `/run/secrets/*` as before.
-- **Rotate / re-key:** edit a value and re-encrypt, or add/remove recipients in `.sops.yaml`
-  then `sops updatekeys secrets.sops.yaml`.
+- **Rotate / re-key:** edit a value and re-encrypt that service's file, or add/remove recipients in
+  `.sops.yaml` then `sops updatekeys <service>/secrets.sops.yaml` for each.
 - **Guard rail:** a tracked pre-commit hook (`.githooks/pre-commit`, enabled via
-  `git config core.hooksPath .githooks`) blocks committing an unencrypted bundle, an age private
-  key, or any plaintext `secrets/` file.
+  `git config core.hooksPath .githooks`) blocks committing an unencrypted `secrets.sops.yaml`, an
+  age private key, or any plaintext `secrets/` file.
 
 > Plaintext secret files still exist on the host at runtime (mode 600/644, gitignored). SOPS
 > encrypts the **git + backup** copy, not on-disk exposure - that's inherent to Docker
