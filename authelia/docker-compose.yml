@@ -6,6 +6,8 @@ services:
     user: "1000:1000"
     security_opt:
       - no-new-privileges:true
+    cap_drop:
+      - ALL
     logging:
       driver: json-file
       options:
@@ -13,7 +15,7 @@ services:
         max-file: "3"
     deploy:
       resources:
-        limits: { cpus: "0.50", memory: 192M }
+        limits: { cpus: "0.50", memory: 192M, pids: 64 }
         reservations: { memory: 64M }
     environment:
       TZ: "Europe/Zagreb"
@@ -51,12 +53,17 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
     logging:
       driver: json-file
       options: { max-size: "10m", max-file: "3" }
     deploy:
       resources:
-        limits: { cpus: "0.25", memory: 96M }
+        limits: { cpus: "0.25", memory: 96M, pids: 32 }
         reservations: { memory: 16M }
     command:
       ["sh", "-c", 'exec redis-server --requirepass "$$(cat /run/secrets/authelia_redis_password)" --save "" --appendonly no']

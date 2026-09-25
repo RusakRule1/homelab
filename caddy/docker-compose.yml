@@ -5,6 +5,14 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /config
     logging:
       driver: json-file
       options:
@@ -12,7 +20,7 @@ services:
         max-file: "3"
     deploy:
       resources:
-        limits: { cpus: "0.50", memory: 128M }
+        limits: { cpus: "0.50", memory: 128M, pids: 128 }
         reservations: { memory: 32M }
     ports:
       - "80:80"
@@ -24,6 +32,13 @@ services:
       proxy:
         aliases:
           - auth.home.lan
+          - kuma.home.lan
+          - pihole.home.lan
+          - nextcloud.home
+          - grafana.home.lan
+          - dozzle.home.lan
+          - prometheus.home.lan
+          - alertmanager.home.lan
     labels:
       - "diun.watch_repo=true"
       - "diun.sort_tags=semver"

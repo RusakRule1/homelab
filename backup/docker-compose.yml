@@ -4,6 +4,13 @@ x-restic-common: &restic-common
   profiles: ["backup"]
   security_opt:
     - no-new-privileges:true
+  cap_drop:
+    - ALL
+  cap_add:
+    - DAC_READ_SEARCH
+  read_only: true
+  tmpfs:
+    - /tmp
   logging:
     driver: json-file
     options:
@@ -32,12 +39,13 @@ services:
       RESTIC_FORGET_ARGS: "--keep-last 3 --keep-daily 7 --keep-weekly 4 --keep-monthly 6"
     deploy:
       resources:
-        limits: { cpus: "0.50", memory: 256M }
+        limits: { cpus: "0.50", memory: 256M, pids: 128 }
         reservations: { memory: 64M }
     volumes:
       - ../uptime-kuma/data:/data/uptime-kuma:ro
       - ../pihole/etc-pihole:/data/pihole:ro
       - ../diun/data:/data/diun:ro
+      - ../authelia/data:/data/authelia:ro
       - ../nextcloud/data/nextcloud:/data/nextcloud-files:ro   # user files + config (NOT the raw postgres dir)
       - ../nextcloud/db-dumps:/data/nextcloud-db:ro            # consistent pg_dump output (the DB)
     labels:
@@ -54,7 +62,7 @@ services:
       PRUNE_CRON: "0 0 4 * * 0"
     deploy:
       resources:
-        limits: { cpus: "0.50", memory: 512M }
+        limits: { cpus: "0.50", memory: 512M, pids: 128 }
         reservations: { memory: 128M }
 
   check:
@@ -65,7 +73,7 @@ services:
       CHECK_CRON: "0 30 4 * * 0"
     deploy:
       resources:
-        limits: { cpus: "0.50", memory: 256M }
+        limits: { cpus: "0.50", memory: 256M, pids: 128 }
         reservations: { memory: 64M }
 
 secrets:

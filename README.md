@@ -58,8 +58,10 @@ Databases and caches sit on segmented internal networks with no host ports.
 - **Pinned exact image versions** (e.g. `caddy:2.11.4`, not `:2` or `:latest`) so updates are deliberate
 - **`restart: unless-stopped`** on every service (survives reboots)
 - **Bind-mounted data** inside each service folder (portable)
-- **Container hardening** - `security_opt: [no-new-privileges:true]` on every service
-  (blocks in-container privilege escalation via setuid binaries)
+- **Container hardening** - `security_opt: [no-new-privileges:true]`, `cap_drop: [ALL]`
+  (+ a curated `cap_add` only where an image needs it), and a `pids_limit` on every service;
+  `read_only: true` + `tmpfs` on the stateless ones. Two documented exceptions: **alloy**
+  (needs host access, no `cap_drop`) and **authelia** (writes at startup, no `read_only`)
 - **Bounded logs** - `json-file` driver with `max-size: 10m`, `max-file: 3` on every
   service, so container logs can't silently fill the disk on an always-on host
 - **Resource limits** - `deploy.resources.limits` (CPU + memory) per service, plus
@@ -79,6 +81,10 @@ Databases and caches sit on segmented internal networks with no host ports.
   for the always-on server, not the dev laptop. Both credentials are Docker secrets (repo
   passphrase + an `rclone.conf` holding the B2 key). See the runbook in `homelab-docs`.
 - **Git as source of truth** for configuration
+- **Validated in CI** (`.github/workflows/validate.yml`) - yamllint, `docker compose config`,
+  promtool/amtool/`caddy validate`, and a SOPS-encrypted guard; plus a **Trivy** CVE scan of every
+  pinned image (`make scan` / weekly). Diun flags *newer* tags; Trivy flags a *known hole in the
+  current pin*. Run the same checks locally with `make validate`
 
 ## Services
 | Service     | Purpose                         | Access                              |
@@ -98,6 +104,7 @@ Databases and caches sit on segmented internal networks with no host ports.
 | Loki        | Log store (filesystem, 30d)     | internal (`monitoring` net)         |
 | Grafana     | Dashboards (provisioned as code)| `https://grafana.home.lan` (OIDC)   |
 | Alertmanager| Alert routing → Telegram        | `https://alertmanager.home.lan` (SSO) |
+| Blackbox    | TLS-cert-expiry + endpoint probes | internal (`monitoring` net)       |
 | Dozzle      | Live container-log viewer       | `https://dozzle.home.lan` (SSO)     |
 
 Local `*.home` names resolve via `/etc/hosts` entries pointing at this machine.

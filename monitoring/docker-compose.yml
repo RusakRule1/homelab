@@ -1,17 +1,22 @@
 services:
   prometheus:
-    image: prom/prometheus:v3.14.0
+    image: prom/prometheus:v3.15.0
     container_name: prometheus
     restart: unless-stopped
     user: "65534:65534"
     security_opt:
       - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
     logging:
       driver: json-file
       options: { max-size: "10m", max-file: "3" }
     deploy:
       resources:
-        limits: { cpus: "0.75", memory: 512M }
+        limits: { cpus: "0.75", memory: 512M, pids: 128 }
         reservations: { memory: 128M }
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
@@ -27,6 +32,12 @@ services:
     networks:
       - monitoring
       - proxy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
     labels:
       - "diun.watch_repo=true"
       - "diun.sort_tags=semver"
@@ -40,12 +51,17 @@ services:
     user: "10001:10001"
     security_opt:
       - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
     logging:
       driver: json-file
       options: { max-size: "10m", max-file: "3" }
     deploy:
       resources:
-        limits: { cpus: "0.50", memory: 512M }
+        limits: { cpus: "0.50", memory: 512M, pids: 128 }
         reservations: { memory: 128M }
     command: ["-config.file=/etc/loki/loki-config.yml"]
     volumes:
@@ -70,7 +86,7 @@ services:
       options: { max-size: "10m", max-file: "3" }
     deploy:
       resources:
-        limits: { cpus: "0.50", memory: 768M }
+        limits: { cpus: "0.50", memory: 768M, pids: 256 }
         reservations: { memory: 192M }
     command:
       - "run"
@@ -100,12 +116,17 @@ services:
     user: "472:472"
     security_opt:
       - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
     logging:
       driver: json-file
       options: { max-size: "10m", max-file: "3" }
     deploy:
       resources:
-        limits: { cpus: "0.50", memory: 512M }
+        limits: { cpus: "0.50", memory: 512M, pids: 128 }
         reservations: { memory: 128M }
     environment:
       TZ: "Europe/Zagreb"
@@ -142,6 +163,12 @@ services:
       - proxy
     depends_on:
       - prometheus
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     labels:
       - "diun.watch_repo=true"
       - "diun.sort_tags=semver"
@@ -155,12 +182,17 @@ services:
     user: "65534:65534"
     security_opt:
       - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
     logging:
       driver: json-file
       options: { max-size: "10m", max-file: "3" }
     deploy:
       resources:
-        limits: { cpus: "0.25", memory: 96M }
+        limits: { cpus: "0.25", memory: 96M, pids: 64 }
         reservations: { memory: 32M }
     command:
       - "--config.file=/etc/alertmanager/alertmanager.yml"
@@ -175,6 +207,49 @@ services:
     networks:
       - monitoring
       - proxy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--tries=1", "--spider", "http://localhost:9093/-/healthy"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    labels:
+      - "diun.watch_repo=true"
+      - "diun.sort_tags=semver"
+      - "diun.max_tags=5"
+      - "diun.include_tags=^v?[0-9]+\\.[0-9]+\\.[0-9]+$$"
+
+  blackbox:
+    image: prom/blackbox-exporter:v0.28.0
+    container_name: blackbox
+    restart: unless-stopped
+    user: "65534:65534"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+    deploy:
+      resources:
+        limits: { cpus: "0.25", memory: 64M, pids: 64 }
+        reservations: { memory: 16M }
+    command:
+      - "--config.file=/etc/blackbox/blackbox.yml"
+    volumes:
+      - ./blackbox/blackbox.yml:/etc/blackbox/blackbox.yml:ro
+      - ./grafana/certs/ca-bundle.crt:/etc/ssl/certs/ca-certificates.crt:ro
+    networks:
+      - monitoring
+      - proxy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--tries=1", "--spider", "http://localhost:9115/-/healthy"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     labels:
       - "diun.watch_repo=true"
       - "diun.sort_tags=semver"
@@ -187,12 +262,17 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
     logging:
       driver: json-file
       options: { max-size: "10m", max-file: "3" }
     deploy:
       resources:
-        limits: { cpus: "0.25", memory: 128M }
+        limits: { cpus: "0.25", memory: 128M, pids: 64 }
         reservations: { memory: 32M }
     environment:
       DOZZLE_REMOTE_HOST: "tcp://dozzle-socket-proxy:2375"
@@ -203,6 +283,12 @@ services:
       - proxy
     depends_on:
       - dozzle-socket-proxy
+    healthcheck:
+      test: ["CMD", "/dozzle", "healthcheck"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     labels:
       - "diun.watch_repo=true"
       - "diun.sort_tags=semver"
@@ -223,7 +309,7 @@ services:
       options: { max-size: "10m", max-file: "3" }
     deploy:
       resources:
-        limits: { cpus: "0.25", memory: 64M }
+        limits: { cpus: "0.25", memory: 64M, pids: 64 }
         reservations: { memory: 16M }
     environment:
       CONTAINERS: 1

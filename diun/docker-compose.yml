@@ -3,6 +3,9 @@ services:
     image: lscr.io/linuxserver/socket-proxy:3.4.4
     container_name: diun-socket-proxy
     restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /run
     security_opt:
       - no-new-privileges:true
     logging:
@@ -12,7 +15,7 @@ services:
         max-file: "3"
     deploy:
       resources:
-        limits: { cpus: "0.25", memory: 64M }
+        limits: { cpus: "0.25", memory: 64M, pids: 64 }
         reservations: { memory: 16M }
     environment:
       CONTAINERS: 1
@@ -27,6 +30,11 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
     logging:
       driver: json-file
       options:
@@ -34,7 +42,7 @@ services:
         max-file: "3"
     deploy:
       resources:
-        limits: { cpus: "0.25", memory: 128M }
+        limits: { cpus: "0.25", memory: 128M, pids: 64 }
         reservations: { memory: 32M }
     environment:
       TZ: "Europe/Zagreb"

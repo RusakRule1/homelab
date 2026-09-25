@@ -60,6 +60,35 @@ groups:
           summary: "Disk will fill within 24h on {{ $labels.instance }} ({{ $labels.mountpoint }})"
           description: "At the current growth rate this filesystem runs out of space in <24h."
 
+  - name: blackbox
+    rules:
+      - alert: CertExpiringSoon
+        expr: probe_ssl_earliest_cert_expiry - time() < 14 * 24 * 3600
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "TLS cert expiring soon: {{ $labels.instance }}"
+          description: "The certificate for {{ $labels.instance }} expires in {{ humanizeDuration $value }}."
+
+      - alert: CertExpired
+        expr: probe_ssl_earliest_cert_expiry - time() <= 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "TLS cert EXPIRED: {{ $labels.instance }}"
+          description: "The certificate for {{ $labels.instance }} has expired — TLS handshakes will fail."
+
+      - alert: BlackboxProbeFailed
+        expr: probe_success == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Endpoint probe failing: {{ $labels.instance }}"
+          description: "blackbox-exporter can't successfully probe {{ $labels.instance }} for >5m."
+
   - name: containers
     rules:
       - alert: ContainerOOMKilled

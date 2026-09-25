@@ -1,0 +1,14 @@
+extends: default
+ignore-from-file: .gitignore
+rules:
+  line-length: disable
+  document-start: disable
+  truthy: disable
+  comments: disable
+  comments-indentation: disable
+  indentation: disable
+  empty-lines: disable
+  braces:
+    max-spaces-inside: 1
+  brackets:
+    max-spaces-inside: 1

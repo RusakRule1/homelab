@@ -5,6 +5,15 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
+      - NET_BIND_SERVICE
     logging:
       driver: json-file
       options:
@@ -12,7 +21,7 @@ services:
         max-file: "3"
     deploy:
       resources:
-        limits: { cpus: "1.0", memory: 1024M }
+        limits: { cpus: "1.0", memory: 1024M, pids: 512 }
         reservations: { memory: 256M }
     environment:
       TZ: "Europe/Zagreb"
@@ -49,13 +58,28 @@ services:
       - "diun.sort_tags=semver"
       - "diun.max_tags=5"
       - "diun.include_tags=^[0-9]+\\.[0-9]+\\.[0-9]+-apache$$"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost/status.php || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 120s
 
   postgres:
-    image: postgres:17.4-alpine
+    image: postgres:17.11-alpine
     container_name: nextcloud-postgres
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
+    stop_grace_period: 60s
     logging:
       driver: json-file
       options:
@@ -63,7 +87,7 @@ services:
         max-file: "3"
     deploy:
       resources:
-        limits: { cpus: "0.75", memory: 512M }
+        limits: { cpus: "0.75", memory: 512M, pids: 256 }
         reservations: { memory: 128M }
     environment:
       TZ: "Europe/Zagreb"
@@ -94,6 +118,11 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
     logging:
       driver: json-file
       options:
@@ -101,7 +130,7 @@ services:
         max-file: "3"
     deploy:
       resources:
-        limits: { cpus: "0.25", memory: 128M }
+        limits: { cpus: "0.25", memory: 128M, pids: 32 }
         reservations: { memory: 32M }
     command:
       [
@@ -130,12 +159,14 @@ services:
       - "diun.include_tags=^7\\.[0-9]+\\.[0-9]+-alpine3\\.[0-9]+$$"
 
   db-dump:
-    image: postgres:17.4-alpine
+    image: postgres:17.11-alpine
     container_name: nextcloud-db-dump
     restart: unless-stopped
     profiles: ["dump"]
     security_opt:
       - no-new-privileges:true
+    cap_drop:
+      - ALL
     logging:
       driver: json-file
       options:
@@ -143,7 +174,7 @@ services:
         max-file: "3"
     deploy:
       resources:
-        limits: { cpus: "0.25", memory: 128M }
+        limits: { cpus: "0.25", memory: 128M, pids: 64 }
         reservations: { memory: 16M }
     environment:
       TZ: "Europe/Zagreb"

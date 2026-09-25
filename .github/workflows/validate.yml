@@ -1,0 +1,59 @@
+name: validate
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: "0 6 * * 1"
+
+jobs:
+  config:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: yamllint
+        run: |
+          python -m pip install --quiet yamllint
+          yamllint -c .yamllint.yml .
+
+      - name: docker compose config
+        run: |
+          for d in caddy pihole authelia nextcloud uptime-kuma diun monitoring backup; do
+            docker compose -f "$d/docker-compose.yml" config -q && echo "ok: $d"
+          done
+
+      - name: promtool (config + rules)
+        run: |
+          docker run --rm --entrypoint promtool \
+            -v "$PWD/monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro" \
+            -v "$PWD/monitoring/prometheus/rules:/etc/prometheus/rules:ro" \
+            prom/prometheus:v3.15.0 check config /etc/prometheus/prometheus.yml
+          docker run --rm --entrypoint promtool \
+            -v "$PWD/monitoring/prometheus/rules:/etc/prometheus/rules:ro" \
+            prom/prometheus:v3.15.0 check rules /etc/prometheus/rules/alerts.yml
+
+      - name: amtool (alertmanager config)
+        run: |
+          docker run --rm --entrypoint amtool \
+            -v "$PWD/monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro" \
+            prom/alertmanager:v0.34.1 check-config /etc/alertmanager/alertmanager.yml
+
+      - name: caddy validate
+        run: |
+          docker run --rm -v "$PWD/caddy/Caddyfile:/etc/caddy/Caddyfile:ro" \
+            caddy:2.11.4 caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+
+      - name: sops secrets are encrypted
+        run: |
+          for f in $(git ls-files '*secrets.sops.yaml'); do
+            grep -q '^sops:' "$f" || { echo "NOT ENCRYPTED: $f"; exit 1; }
+            echo "encrypted: $f"
+          done
+
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: trivy (fixable HIGH/CRITICAL in pinned images)
+        run: SEVERITY=HIGH,CRITICAL ./scripts/scan.sh
