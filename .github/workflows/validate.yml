@@ -8,9 +8,9 @@ on:
 
 jobs:
   config:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: yamllint
         run: |
@@ -52,8 +52,19 @@ jobs:
           done
 
   scan:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - name: trivy (fixable HIGH/CRITICAL in pinned images)
-        run: SEVERITY=HIGH,CRITICAL ./scripts/scan.sh
+      - uses: actions/checkout@v5
+      - name: trivy (report fixable HIGH/CRITICAL in pinned images)
+        env:
+          SEVERITY: "HIGH,CRITICAL"
+          FAIL_ON_FINDINGS: "false"
+        run: |
+          ./scripts/scan.sh | tee scan.txt
+          {
+            echo '## Trivy — fixable HIGH/CRITICAL per pinned image';
+            echo '```';
+            grep -E '^=================== |Total:' scan.txt || echo 'no findings';
+            echo '```';
+            echo '_Report-only: shows which pins are due a bump once upstream ships a fix. `make scan` gates locally._';
+          } >> "$GITHUB_STEP_SUMMARY"
