@@ -17,3 +17,24 @@
     pull: "{{ 'missing' if stack_state == 'present' else 'never' }}"
     remove_orphans: true
   when: enable_backup | bool
+
+- name: Check Nextcloud background-jobs mode
+  ansible.builtin.command:
+    cmd: docker exec -u www-data nextcloud php occ config:app:get core backgroundjobs_mode
+  register: stacks_nc_bgmode
+  changed_when: false
+  failed_when: false
+  when:
+    - stack_state == 'present'
+    - "'nextcloud' in homelab_stacks"
+
+- name: Set Nextcloud background jobs to cron mode
+  ansible.builtin.command:
+    cmd: docker exec -u www-data nextcloud php occ background:cron
+  register: stacks_nc_setcron
+  changed_when: "'Set mode' in stacks_nc_setcron.stdout"
+  when:
+    - stack_state == 'present'
+    - "'nextcloud' in homelab_stacks"
+    - stacks_nc_bgmode.rc | default(1) == 0
+    - "'cron' not in (stacks_nc_bgmode.stdout | default(''))"
