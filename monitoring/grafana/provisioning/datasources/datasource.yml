@@ -12,9 +12,9 @@ datasources:
       timeInterval: "15s"
     editable: false
 
-  - name: Loki
-    uid: loki
-    type: loki
+  - name: VictoriaLogs
+    uid: victorialogs
+    type: victoriametrics-logs-datasource
     access: proxy
-    url: http://loki:3100
+    url: http://victorialogs:9428
     editable: false

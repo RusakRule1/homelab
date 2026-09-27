@@ -38,17 +38,11 @@ services:
       timeout: 5s
       retries: 3
       start_period: 20s
-    labels:
-      - "diun.watch_repo=true"
-      - "diun.sort_tags=semver"
-      - "diun.max_tags=5"
-      - "diun.include_tags=^v?[0-9]+\\.[0-9]+\\.[0-9]+$$"
 
-  loki:
-    image: grafana/loki:3.7.8
-    container_name: loki
+  victorialogs:
+    image: victoriametrics/victoria-logs:v1.52.0
+    container_name: victorialogs
     restart: unless-stopped
-    user: "10001:10001"
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -63,17 +57,14 @@ services:
       resources:
         limits: { cpus: "0.50", memory: 512M, pids: 128 }
         reservations: { memory: 128M }
-    command: ["-config.file=/etc/loki/loki-config.yml"]
+    command:
+      - "-storageDataPath=/vlogs"
+      - "-retentionPeriod=30d"
+      - "-httpListenAddr=:9428"
     volumes:
-      - ./loki/loki-config.yml:/etc/loki/loki-config.yml:ro
-      - loki-data:/loki
+      - victorialogs-data:/vlogs
     networks:
       - monitoring
-    labels:
-      - "diun.watch_repo=true"
-      - "diun.sort_tags=semver"
-      - "diun.max_tags=5"
-      - "diun.include_tags=^[0-9]+\\.[0-9]+\\.[0-9]+$$"
 
   alloy:
     image: grafana/alloy:v1.19.2
@@ -103,11 +94,6 @@ services:
       - /run/containerd/containerd.sock:/run/containerd/containerd.sock:ro
     networks:
       - monitoring
-    labels:
-      - "diun.watch_repo=true"
-      - "diun.sort_tags=semver"
-      - "diun.max_tags=5"
-      - "diun.include_tags=^v?[0-9]+\\.[0-9]+\\.[0-9]+$$"
 
   grafana:
     image: grafana/grafana:13.2.2
@@ -130,6 +116,7 @@ services:
         reservations: { memory: 128M }
     environment:
       TZ: "Europe/Zagreb"
+      GF_INSTALL_PLUGINS: "victoriametrics-logs-datasource"
       GF_SERVER_ROOT_URL: "https://grafana.home.lan"
       GF_SERVER_ENFORCE_DOMAIN: "false"
       GF_SECURITY_ADMIN_USER: "admin"
@@ -176,11 +163,6 @@ services:
       timeout: 5s
       retries: 3
       start_period: 30s
-    labels:
-      - "diun.watch_repo=true"
-      - "diun.sort_tags=semver"
-      - "diun.max_tags=5"
-      - "diun.include_tags=^[0-9]+\\.[0-9]+\\.[0-9]+$$"
 
   alertmanager:
     image: prom/alertmanager:v0.34.1
@@ -220,11 +202,6 @@ services:
       timeout: 5s
       retries: 3
       start_period: 15s
-    labels:
-      - "diun.watch_repo=true"
-      - "diun.sort_tags=semver"
-      - "diun.max_tags=5"
-      - "diun.include_tags=^v?[0-9]+\\.[0-9]+\\.[0-9]+$$"
 
   blackbox:
     image: prom/blackbox-exporter:v0.28.0
@@ -257,11 +234,6 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
-    labels:
-      - "diun.watch_repo=true"
-      - "diun.sort_tags=semver"
-      - "diun.max_tags=5"
-      - "diun.include_tags=^v?[0-9]+\\.[0-9]+\\.[0-9]+$$"
 
   dozzle:
     image: amir20/dozzle:v11.1.0
@@ -296,11 +268,6 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
-    labels:
-      - "diun.watch_repo=true"
-      - "diun.sort_tags=semver"
-      - "diun.max_tags=5"
-      - "diun.include_tags=^v?[0-9]+\\.[0-9]+\\.[0-9]+$$"
 
   dozzle-socket-proxy:
     image: lscr.io/linuxserver/socket-proxy:3.4.4
@@ -337,7 +304,7 @@ volumes:
   grafana-data:
   alertmanager-data:
   alloy-data:
-  loki-data:
+  victorialogs-data:
 
 secrets:
   grafana_admin_password:

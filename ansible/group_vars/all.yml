@@ -3,13 +3,11 @@ homelab_root: "{{ (playbook_dir + '/..') | realpath }}"
 homelab_user: "{{ ansible_user_id }}"
 proxy_network: proxy
 homelab_stacks:
-  - pihole
+  - technitium
   - caddy
   - authelia
-  - nextcloud
   - uptime-kuma
-  - diun
-  - monitoring
+  - beszel
 stack_state: present
 enable_backup: false
 sops_version: v3.9.4

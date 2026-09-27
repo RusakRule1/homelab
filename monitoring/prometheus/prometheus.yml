@@ -25,9 +25,9 @@ scrape_configs:
     static_configs:
       - targets: ["alloy:12345"]
 
-  - job_name: "loki"
+  - job_name: "victorialogs"
     static_configs:
-      - targets: ["loki:3100"]
+      - targets: ["victorialogs:9428"]
 
   - job_name: "grafana"
     static_configs:
@@ -49,12 +49,13 @@ scrape_configs:
       - targets:
           - https://auth.home.lan
           - https://kuma.home.lan
-          - https://pihole.home.lan/admin/
+          - https://dns.home.lan
           - https://nextcloud.home
           - https://grafana.home.lan/api/health
           - https://dozzle.home.lan
           - https://prometheus.home.lan
           - https://alertmanager.home.lan
+          - https://beszel.home.lan
     relabel_configs:
       - source_labels: [__address__]
         target_label: __param_target

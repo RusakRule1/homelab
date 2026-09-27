@@ -1,0 +1,61 @@
+services:
+  beszel:
+    image: henrygd/beszel:0.20.0
+    container_name: beszel
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits: { cpus: "0.25", memory: 256M, pids: 128 }
+        reservations: { memory: 32M }
+    volumes:
+      - ./data:/beszel_data
+    networks:
+      - proxy
+      - beszel
+
+  beszel-agent:
+    image: henrygd/beszel-agent:0.20.0-alpine
+    container_name: beszel-agent
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits: { cpus: "0.25", memory: 128M, pids: 64 }
+        reservations: { memory: 16M }
+    environment:
+      LISTEN: "45876"
+      KEY: "${BESZEL_KEY:-}"
+      TOKEN: "${BESZEL_TOKEN:-}"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - beszel
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z -w2 127.0.0.1 45876 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+networks:
+  proxy:
+    external: true
+  beszel:
+    driver: bridge

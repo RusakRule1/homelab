@@ -38,7 +38,7 @@ enable-backup:
 validate:
 	$(ANSIBLE) $(PLAYBOOK) --syntax-check
 	$(ANSIBLE) ansible-lint
-	@for d in pihole caddy authelia nextcloud uptime-kuma diun monitoring backup; do \
+	@for d in technitium caddy authelia nextcloud uptime-kuma monitoring beszel backup; do \
 		docker compose -f $$d/docker-compose.yml config -q && echo "ok: $$d"; \
 	done
 	docker run --rm --entrypoint promtool \

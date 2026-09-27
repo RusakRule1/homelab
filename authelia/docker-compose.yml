@@ -38,17 +38,12 @@ services:
     networks:
       - proxy
       - authelia-internal
-    labels:
-      - "diun.watch_repo=true"
-      - "diun.sort_tags=semver"
-      - "diun.max_tags=5"
-      - "diun.include_tags=^v?[0-9]+\\.[0-9]+\\.[0-9]+$$"
     depends_on:
       authelia-redis:
         condition: service_healthy
 
   authelia-redis:
-    image: redis:7.4.11-alpine3.21
+    image: valkey/valkey:8.1.10-alpine3.24
     container_name: authelia-redis
     restart: unless-stopped
     security_opt:
@@ -66,13 +61,13 @@ services:
         limits: { cpus: "0.25", memory: 96M, pids: 32 }
         reservations: { memory: 16M }
     command:
-      ["sh", "-c", 'exec redis-server --requirepass "$$(cat /run/secrets/authelia_redis_password)" --save "" --appendonly no']
+      ["sh", "-c", 'exec valkey-server --requirepass "$$(cat /run/secrets/authelia_redis_password)" --save "" --appendonly no']
     secrets:
       - authelia_redis_password
     networks:
       - authelia-internal
     healthcheck:
-      test: ["CMD-SHELL", 'redis-cli -a "$$(cat /run/secrets/authelia_redis_password)" --no-auth-warning ping | grep -q PONG']
+      test: ["CMD-SHELL", 'valkey-cli -a "$$(cat /run/secrets/authelia_redis_password)" --no-auth-warning ping | grep -q PONG']
       interval: 15s
       timeout: 5s
       retries: 5

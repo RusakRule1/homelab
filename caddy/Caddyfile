@@ -48,13 +48,13 @@ kuma.home.lan {
 	reverse_proxy uptime-kuma:3001
 }
 
-pihole.home.lan {
+dns.home.lan {
 	tls internal
 	import secure_headers
 	import logging
 	import compression
 	import authelia
-	reverse_proxy pihole:80
+	reverse_proxy technitium:5380
 }
 
 nextcloud.home {
@@ -67,39 +67,49 @@ nextcloud.home {
 	reverse_proxy nextcloud:80
 }
 
-grafana.home.lan {
-	tls internal
-	import secure_headers
-	import logging
-	import compression
-	reverse_proxy grafana:3000
-}
+# --- monitoring stack disabled (not in homelab_stacks; Beszel is the active metrics view).
+# --- Re-enable these blocks when the `monitoring` stack is deployed again.
+# grafana.home.lan {
+# 	tls internal
+# 	import secure_headers
+# 	import logging
+# 	import compression
+# 	reverse_proxy grafana:3000
+# }
+#
+# dozzle.home.lan {
+# 	tls internal
+# 	import secure_headers
+# 	import logging
+# 	import compression
+# 	import authelia
+# 	reverse_proxy dozzle:8080
+# }
+#
+# prometheus.home.lan {
+# 	tls internal
+# 	import secure_headers
+# 	import logging
+# 	import compression
+# 	import authelia
+# 	reverse_proxy prometheus:9090
+# }
+#
+# alertmanager.home.lan {
+# 	tls internal
+# 	import secure_headers
+# 	import logging
+# 	import compression
+# 	import authelia
+# 	reverse_proxy alertmanager:9093
+# }
 
-dozzle.home.lan {
+beszel.home.lan {
 	tls internal
 	import secure_headers
 	import logging
 	import compression
-	import authelia
-	reverse_proxy dozzle:8080
-}
-
-prometheus.home.lan {
-	tls internal
-	import secure_headers
-	import logging
-	import compression
-	import authelia
-	reverse_proxy prometheus:9090
-}
-
-alertmanager.home.lan {
-	tls internal
-	import secure_headers
-	import logging
-	import compression
-	import authelia
-	reverse_proxy alertmanager:9093
+	reverse_proxy beszel:8090
 }
 
 :2020 {

@@ -1,0 +1,50 @@
+services:
+  technitium:
+    image: technitium/dns-server:15.5.1
+    container_name: technitium
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits: { cpus: "1.0", memory: 512M, pids: 512 }
+        reservations: { memory: 128M }
+    ports:
+      - "53:53/tcp"
+      - "53:53/udp"
+    environment:
+      TZ: "Europe/Zagreb"
+      DNS_SERVER_DOMAIN: "dns.home.lan"
+      DNS_SERVER_ADMIN_PASSWORD_FILE: /run/secrets/technitium_admin_password
+      DNS_SERVER_WEB_SERVICE_HTTP_PORT: "5380"
+      DNS_SERVER_WEB_SERVICE_ENABLE_HTTPS: "false"
+      DNS_SERVER_RECURSION: "AllowOnlyForPrivateNetworks"
+    volumes:
+      - ./data:/etc/dns
+    secrets:
+      - technitium_admin_password
+    networks:
+      - proxy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS -o /dev/null http://localhost:5380/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+networks:
+  proxy:
+    external: true
+
+secrets:
+  technitium_admin_password:
+    file: ./secrets/technitium_admin_password

@@ -19,37 +19,38 @@ flowchart TB
     caddy -->|forward_auth| authelia[Authelia — SSO · 2FA · OIDC]
     authelia --- aredis[(authelia-redis)]
 
-    caddy --> pihole[Pi-hole] --> unbound[Unbound — recursive DNS]
+    caddy --> technitium[Technitium — DNS block + recurse] --> dns53{{DNS :53}}
     caddy --> kuma[Uptime Kuma]
     caddy --> prom[Prometheus]
     caddy --> alertmgr[Alertmanager]
     caddy --> dozzle[Dozzle]
+    caddy --> beszel[Beszel — host + Docker metrics]
 
     caddy --> nextcloud[Nextcloud]
     caddy --> grafana[Grafana]
     nextcloud --- pg[(Postgres)]
-    nextcloud --- ncredis[(Redis)]
+    nextcloud --- ncvalkey[(Valkey)]
 
     alloy[Grafana Alloy — metrics + logs] --> prom
-    alloy --> loki[(Loki)]
+    alloy --> vlogs[(VictoriaLogs)]
     prom --> grafana
-    loki --> grafana
+    vlogs --> grafana
 
     alertmgr -->|alerts| tg((Telegram))
-    diun[Diun — image updates] -->|notify| tg
     restic[restic] -->|encrypted · offsite| b2((Backblaze B2))
 ```
 
 A LAN client reaches everything through **Caddy** over HTTPS (built-in local CA). Caddy gates the
-admin UIs (Pi-hole, Uptime Kuma, Prometheus, Alertmanager, Dozzle) through **Authelia** via
-`forward_auth`, and hands **Nextcloud** and **Grafana** their logins via **Authelia OIDC**.
+admin UIs (Technitium, Uptime Kuma, Prometheus, Alertmanager, Dozzle, Beszel) through **Authelia**
+via `forward_auth`, and hands **Nextcloud** and **Grafana** their logins via **Authelia OIDC**.
 Databases and caches sit on segmented internal networks with no host ports.
 
 ## Structure
 - One folder per service, each with its own `docker-compose.yml`
-- `ansible/` + root `Makefile` — IaC that installs Docker, renders secrets, creates the
+- `ansible/` + root `Makefile` - IaC that installs Docker, renders secrets, creates the
   `proxy` net and deploys every stack (`make bootstrap`); turns a new-host bring-up into one command
-- Persistent data in `./<service>/data/` (or `./pihole/etc-pihole/`) - gitignored, copied on migration
+- Persistent data in `./<service>/data/` (some services keep config in that store too, e.g.
+  Technitium's `./technitium/data/`, Kuma's `./uptime-kuma/data/`) - gitignored, copied on migration
 - Secrets as files in `./<service>/secrets/` - gitignored, recreated on migration
 - TLS: Caddy's **local CA + issued certs** live in `./caddy/data/` - gitignored; the CA is
   per-machine (trust it once per device), certs are auto-issued, nothing to regenerate by hand
@@ -66,9 +67,10 @@ Databases and caches sit on segmented internal networks with no host ports.
   service, so container logs can't silently fill the disk on an always-on host
 - **Resource limits** - `deploy.resources.limits` (CPU + memory) per service, plus
   memory `reservations`; enforced by plain `docker compose` (not only Swarm). Keeps one
-  runaway container (e.g. a Pi-hole gravity rebuild) from starving the host
+  runaway container from starving the host
 - **Docker secrets** for credentials - files under `./<service>/secrets/`, mounted at
-  `/run/secrets/*` (Pi-hole web password, Diun Telegram token/chat-id). Never committed.
+  `/run/secrets/*` (Technitium admin password, Nextcloud DB/cache/admin, Authelia, Grafana +
+  Alertmanager). Never committed.
 - **Shared `proxy` network** (external) - Caddy routes to every web service over it, by
   container name
 - **HTTPS everywhere** - Caddy serves TLS on `:443` using its **built-in local CA**
@@ -83,31 +85,37 @@ Databases and caches sit on segmented internal networks with no host ports.
 - **Git as source of truth** for configuration
 - **Validated in CI** (`.github/workflows/validate.yml`) - yamllint, `docker compose config`,
   promtool/amtool/`caddy validate`, and a SOPS-encrypted guard; plus a **Trivy** CVE scan of every
-  pinned image (`make scan` / weekly). Diun flags *newer* tags; Trivy flags a *known hole in the
-  current pin*. Run the same checks locally with `make validate`
+  pinned image (`make scan` / weekly). Renovate opens PRs for *newer* tags; Trivy flags a *known
+  hole in the current pin*. Run the same checks locally with `make validate`
 
 ## Services
 | Service     | Purpose                         | Access                              |
 |-------------|---------------------------------|-------------------------------------|
 | Caddy       | Reverse proxy + local TLS       | internal (`:80`/`:443`, no dashboard) |
 | Authelia    | SSO + 2FA (forward_auth + OIDC) | `https://auth.home.lan`             |
+| Technitium  | DNS ad-blocking + native recursion (replaces Pi-hole + Unbound) | `https://dns.home.lan` (SSO) + DNS `:53` |
 | Uptime Kuma | Uptime / status monitoring      | `https://kuma.home.lan` (SSO)       |
-| Pi-hole     | Network-wide DNS ad-blocking    | `https://pihole.home.lan/admin/` (SSO) + DNS `:53` |
-| Unbound     | Recursive DNS resolver          | internal only (`:5335`)             |
-| Diun        | Image-update notifier (Telegram)| internal (no web UI)                |
-| Nextcloud   | File sync/share (app+DB+cache)  | `https://nextcloud.home`            |
-| Postgres    | Nextcloud database              | internal `internal` net (no host port) |
-| Redis       | Nextcloud cache + file locking  | internal `internal` net (no host port) |
+| Nextcloud  | File sync/share (app+DB+cache)  | `https://nextcloud.home`            |
+| Postgres   | Nextcloud database              | internal `internal` net (no host port) |
+| Valkey     | Nextcloud cache + file locking  | internal `internal` net (no host port) |
 | Backup      | restic → Backblaze B2 (offsite) | internal — **disabled by default**  |
 | Prometheus  | Metrics TSDB + scraper + alerts | `https://prometheus.home.lan` (SSO) |
 | Grafana Alloy | Unified collector (metrics+logs) | internal (`monitoring` net)         |
-| Loki        | Log store (filesystem, 30d)     | internal (`monitoring` net)         |
+| VictoriaLogs | Log store (30d) — replaces Loki | internal (`monitoring` net)         |
 | Grafana     | Dashboards (provisioned as code)| `https://grafana.home.lan` (OIDC)   |
 | Alertmanager| Alert routing → Telegram        | `https://alertmanager.home.lan` (SSO) |
 | Blackbox    | TLS-cert-expiry + endpoint probes | internal (`monitoring` net)       |
 | Dozzle      | Live container-log viewer       | `https://dozzle.home.lan` (SSO)     |
+| Beszel      | Lightweight host + Docker metrics (hub + agent) | `https://beszel.home.lan` (SSO) |
 
-Local `*.home` names resolve via `/etc/hosts` entries pointing at this machine.
+Local `*.home` / `*.home.lan` names resolve via `/etc/hosts` entries pointing at this machine.
+
+**Deployed by default** (`homelab_stacks`): Technitium, Caddy, Authelia, Uptime Kuma, Beszel.
+**Built but off by default** (config kept, not in the playbook — re-add to `homelab_stacks` to
+enable): **Nextcloud** (+ Postgres + Valkey) and the full **monitoring** stack
+(Prometheus/Grafana/Alloy/VictoriaLogs/Alertmanager/Blackbox/Dozzle) — Beszel is the active metrics
+view; the Prometheus stack is the deeper layer, enabled when wanted. Image updates: **Renovate**
+(`renovate.json`) + Trivy (`make scan`) — the Diun notifier was removed.
 
 ## First-run / bootstrap
 **One command** — the whole thing is codified as Ansible (`ansible/`, wrapped by a `Makefile`):
@@ -141,12 +149,13 @@ done
 git config core.hooksPath .githooks
 
 # 4. local hostnames (LAN-only names resolve via /etc/hosts on this machine)
-echo "127.0.0.1 auth.home.lan kuma.home pihole.home nextcloud.home \
-grafana.home.lan prometheus.home.lan alertmanager.home.lan dozzle.home.lan" | sudo tee -a /etc/hosts
+echo "127.0.0.1 auth.home.lan kuma.home.lan dns.home.lan nextcloud.home \
+grafana.home.lan prometheus.home.lan alertmanager.home.lan dozzle.home.lan beszel.home.lan" | sudo tee -a /etc/hosts
 
 # 5. bring up the core stacks (order-independent; proxy net is external).
-#    monitoring has extra prep - see its section below.
-for s in caddy authelia pihole uptime-kuma diun nextcloud; do
+#    monitoring + beszel have extra prep - see their sections below.
+#    nextcloud is off by default (add it here if you want it).
+for s in technitium caddy authelia uptime-kuma; do
   docker compose -f "$s/docker-compose.yml" up -d
 done
 
@@ -160,13 +169,15 @@ sudo trust extract-compat                              # then restart browsers
 ### Adding a new web service
 Add a site block to `caddy/Caddyfile`:
 ```caddyfile
-NAME.home {
+NAME.home.lan {
     tls internal
     import secure_headers
+    import compression
+    import authelia          # optional: gate it behind SSO
     reverse_proxy CONTAINER:PORT
 }
 ```
-then add `NAME.home` to `/etc/hosts` and `docker compose -f caddy/docker-compose.yml up -d`.
+then add `NAME.home.lan` to `/etc/hosts` and `docker compose -f caddy/docker-compose.yml up -d`.
 Caddy issues the cert automatically on first request - no cert-regeneration step.
 
 ### Backups (optional - server only, disabled by default)
@@ -185,9 +196,9 @@ repo (`backup/backups.md`).
 
 ### Monitoring (metrics + logs)
 The `monitoring/` stack is Prometheus + **Grafana Alloy** (one unified collector for host
-+ container **metrics → Prometheus** and container **logs → Loki**, replacing separate
-node-exporter + cAdvisor) + **Loki** (log store) + Grafana (SSO via Authelia OIDC) +
-Alertmanager (→ Telegram) + Dozzle (live logs). Bootstrap:
++ container **metrics → Prometheus** and container **logs → VictoriaLogs**, replacing separate
+node-exporter + cAdvisor) + **VictoriaLogs** (log store, replaces Loki) + Grafana (SSO via Authelia
+OIDC) + Alertmanager (→ Telegram) + Blackbox + Dozzle (live logs). Bootstrap:
 ```bash
 cd monitoring     # data in named volumes; secrets (grafana admin/oidc, alertmanager telegram) come from the SOPS bundle (step 2)
 # CA bundle so Grafana trusts Caddy's local CA for the OIDC back-channel (Caddy must be up):
@@ -202,11 +213,22 @@ Grafana keeps a break-glass local `admin`; put yourself in an `admins` group in
 `authelia/config/users_database.yml` for Grafana Admin. Full runbook (why Alloy, OIDC
 back-channel, alert rules, dashboards-as-code, gotchas) in `homelab-docs/monitoring/monitoring.md`.
 
+### Beszel (lightweight metrics, alongside the Prometheus stack)
+The `beszel/` stack is a low-overhead host + Docker metrics view (hub behind Authelia at
+`beszel.home.lan` + a per-host agent). The hub↔agent link uses a key the **hub generates on first
+run**, so it's a one-time manual step (can't be baked into git):
+```bash
+docker compose -f beszel/docker-compose.yml up -d     # then open https://beszel.home.lan, create admin
+# Add System -> copy the KEY -> put it in beszel/.env as BESZEL_KEY=... (gitignored; see .env.example)
+docker compose -f beszel/docker-compose.yml up -d --force-recreate beszel-agent
+# in the hub, point the system at host "beszel-agent", port 45876
+```
+
 ## Secrets (SOPS + age)
 Every credential is committed to this **public** repo - safely - with
 [SOPS](https://github.com/getsops/sops) + [age](https://github.com/FiloSottile/age). Secrets live in
-**per-service** encrypted files, `<service>/secrets.sops.yaml` (authelia/backup/diun/monitoring/
-nextcloud); only the **values** are encrypted (each `path` and `mode` stays cleartext, so `git diff`
+**per-service** encrypted files, `<service>/secrets.sops.yaml` (authelia/backup/monitoring/
+nextcloud/technitium); only the **values** are encrypted (each `path` and `mode` stays cleartext, so `git diff`
 shows *which* secret changed, never the value). Per-file (vs one bundle) is the GitOps-idiomatic
 layout and lets a new service's secrets be added from a machine that has only the **public** keys
 (`sops encrypt` a new file needs no private key).
@@ -230,7 +252,7 @@ layout and lets a new service's secrets be added from a machine that has only th
 
 ## Machines
 - **(dev)** Arch Linux laptop - current build machine (single-host "learning mode":
-  `.home` names resolve via `/etc/hosts`; Pi-hole is not the LAN's DNS yet)
+  `.home`/`.home.lan` names resolve via `/etc/hosts`; Technitium is not the LAN's DNS yet)
 - **(planned)** always-on mini PC - future 24/7 host. Intended shape: **Proxmox** host →
   a Debian VM → Docker Engine → these Compose stacks (VM over LXC for kernel isolation
   and clean upgrades). The stack is built to move as-is; see the migration guide in the

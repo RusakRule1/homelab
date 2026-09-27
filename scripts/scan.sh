@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Scan every pinned image for known CVEs. Complements Diun: Diun says "a newer tag
-# exists"; this says "your CURRENT pinned image has a known, fixable vulnerability".
+# Scan every pinned image for known CVEs. Complements Renovate: Renovate says "a newer
+# tag exists"; this says "your CURRENT pinned image has a known, fixable vulnerability".
 # Usage: scripts/scan.sh            (HIGH,CRITICAL, fixable only; exits 1 on findings)
 #        SEVERITY=CRITICAL scripts/scan.sh
 #        IGNORE_UNFIXED=false scripts/scan.sh   (include not-yet-fixed CVEs)

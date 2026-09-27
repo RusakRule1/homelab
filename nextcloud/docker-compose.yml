@@ -54,11 +54,6 @@ services:
     networks:
       - proxy
       - internal
-    labels:
-      - "diun.watch_repo=true"
-      - "diun.sort_tags=semver"
-      - "diun.max_tags=5"
-      - "diun.include_tags=^[0-9]+\\.[0-9]+\\.[0-9]+-apache$$"
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost/status.php || exit 1"]
       interval: 30s
@@ -98,11 +93,6 @@ services:
     depends_on:
       nextcloud:
         condition: service_healthy
-    labels:
-      - "diun.watch_repo=true"
-      - "diun.sort_tags=semver"
-      - "diun.max_tags=5"
-      - "diun.include_tags=^[0-9]+\\.[0-9]+\\.[0-9]+-apache$$"
 
   postgres:
     image: postgres:17.11-alpine
@@ -145,14 +135,9 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
-    labels:
-      - "diun.watch_repo=true"
-      - "diun.sort_tags=semver"
-      - "diun.max_tags=5"
-      - "diun.include_tags=^17\\.[0-9]+-alpine$$"
 
   redis:
-    image: redis:7.4.11-alpine3.21
+    image: valkey/valkey:8.1.10-alpine3.24
     container_name: nextcloud-redis
     restart: unless-stopped
     security_opt:
@@ -175,7 +160,7 @@ services:
       [
         "sh",
         "-c",
-        'exec redis-server --requirepass "$$(cat /run/secrets/redis_password)" --save "" --appendonly no',
+        'exec valkey-server --requirepass "$$(cat /run/secrets/redis_password)" --save "" --appendonly no',
       ]
     secrets:
       - redis_password
@@ -185,17 +170,12 @@ services:
       test:
         [
           "CMD-SHELL",
-          'redis-cli -a "$$(cat /run/secrets/redis_password)" --no-auth-warning ping | grep -q PONG',
+          'valkey-cli -a "$$(cat /run/secrets/redis_password)" --no-auth-warning ping | grep -q PONG',
         ]
       interval: 15s
       timeout: 5s
       retries: 5
       start_period: 10s
-    labels:
-      - "diun.watch_repo=true"
-      - "diun.sort_tags=semver"
-      - "diun.max_tags=5"
-      - "diun.include_tags=^7\\.[0-9]+\\.[0-9]+-alpine3\\.[0-9]+$$"
 
   db-dump:
     image: postgres:17.11-alpine

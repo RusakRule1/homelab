@@ -41,7 +41,7 @@ access_control:
       policy: "bypass"
     - domain: "kuma.home.lan"
       policy: "two_factor"
-    - domain: "pihole.home.lan"
+    - domain: "dns.home.lan"
       policy: "two_factor"
     - domain: "dozzle.home.lan"
       policy: "two_factor"
