@@ -16,8 +16,11 @@ services:
       resources:
         limits: { cpus: "0.25", memory: 256M, pids: 128 }
         reservations: { memory: 32M }
+    environment:
+      USER_CREATION: "true"
     volumes:
       - ./data:/beszel_data
+      - ./certs/ca-bundle.crt:/etc/ssl/certs/ca-certificates.crt:ro
     networks:
       - proxy
       - beszel

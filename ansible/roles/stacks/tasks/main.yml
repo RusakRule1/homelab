@@ -1,13 +1,61 @@
 ---
-- name: Deploy the homelab stacks
+- name: Deploy the homelab stacks (Beszel handled after, once its CA bundle exists)
   community.docker.docker_compose_v2:
     project_src: "{{ homelab_root }}/{{ item }}"
     state: "{{ stack_state }}"
     pull: "{{ 'missing' if stack_state == 'present' else 'never' }}"
     remove_orphans: true
-  loop: "{{ homelab_stacks }}"
+  loop: "{{ homelab_stacks | reject('equalto', 'beszel') | list }}"
   loop_control:
     label: "{{ item }}"
+
+- name: Ensure Beszel certs dir exists
+  ansible.builtin.file:
+    path: "{{ homelab_root }}/beszel/certs"
+    state: directory
+    mode: "0755"
+  when:
+    - stack_state == 'present'
+    - "'beszel' in homelab_stacks"
+
+- name: Wait for Caddy to generate its local CA (Beszel's OIDC back-channel must trust it)
+  ansible.builtin.command:
+    cmd: docker exec caddy test -f /data/caddy/pki/authorities/local/root.crt
+  register: stacks_caddy_ca
+  until: stacks_caddy_ca.rc == 0
+  retries: 30
+  delay: 2
+  changed_when: false
+  when:
+    - stack_state == 'present'
+    - "'beszel' in homelab_stacks"
+
+- name: Extract Caddy's local CA root (written root-only inside the container)
+  ansible.builtin.command:
+    cmd: docker cp caddy:/data/caddy/pki/authorities/local/root.crt /tmp/caddy-root.crt
+  changed_when: false
+  when:
+    - stack_state == 'present'
+    - "'beszel' in homelab_stacks"
+
+- name: Build Beszel's CA bundle (system CAs + Caddy local CA)
+  ansible.builtin.shell: >
+    cat /etc/ssl/certs/ca-certificates.crt /tmp/caddy-root.crt
+    > "{{ homelab_root }}/beszel/certs/ca-bundle.crt"
+  args:
+    executable: /bin/bash
+    creates: "{{ homelab_root }}/beszel/certs/ca-bundle.crt"
+  when:
+    - stack_state == 'present'
+    - "'beszel' in homelab_stacks"
+
+- name: Deploy Beszel (after its CA bundle exists)
+  community.docker.docker_compose_v2:
+    project_src: "{{ homelab_root }}/beszel"
+    state: "{{ stack_state }}"
+    pull: "{{ 'missing' if stack_state == 'present' else 'never' }}"
+    remove_orphans: true
+  when: "'beszel' in homelab_stacks"
 
 - name: Deploy the backup stack (profile-gated)
   community.docker.docker_compose_v2:

@@ -41,8 +41,8 @@ flowchart TB
 ```
 
 A LAN client reaches everything through **Caddy** over HTTPS (built-in local CA). Caddy gates the
-admin UIs (Technitium, Uptime Kuma, Prometheus, Alertmanager, Dozzle, Beszel) through **Authelia**
-via `forward_auth`, and hands **Nextcloud** and **Grafana** their logins via **Authelia OIDC**.
+admin UIs (Technitium, Uptime Kuma, Prometheus, Alertmanager, Dozzle) through **Authelia**
+via `forward_auth`, and hands **Nextcloud**, **Grafana**, and **Beszel** their logins via **Authelia OIDC**.
 Databases and caches sit on segmented internal networks with no host ports.
 
 ## Structure
@@ -106,7 +106,7 @@ Databases and caches sit on segmented internal networks with no host ports.
 | Alertmanager| Alert routing → Telegram        | `https://alertmanager.home.lan` (SSO) |
 | Blackbox    | TLS-cert-expiry + endpoint probes | internal (`monitoring` net)       |
 | Dozzle      | Live container-log viewer       | `https://dozzle.home.lan` (SSO)     |
-| Beszel      | Lightweight host + Docker metrics (hub + agent) | `https://beszel.home.lan` (SSO) |
+| Beszel      | Lightweight host + Docker metrics (hub + agent) | `https://beszel.home.lan` (OIDC) |
 
 Local `*.home` / `*.home.lan` names resolve via `/etc/hosts` entries pointing at this machine.
 
@@ -214,12 +214,29 @@ Grafana keeps a break-glass local `admin`; put yourself in an `admins` group in
 back-channel, alert rules, dashboards-as-code, gotchas) in `homelab-docs/monitoring/monitoring.md`.
 
 ### Beszel (lightweight metrics, alongside the Prometheus stack)
-The `beszel/` stack is a low-overhead host + Docker metrics view (hub behind Authelia at
-`beszel.home.lan` + a per-host agent). The hub↔agent link uses a key the **hub generates on first
-run**, so it's a one-time manual step (can't be baked into git):
+The `beszel/` stack is a low-overhead host + Docker metrics view (hub + a per-host agent). Login is
+**Authelia via OIDC** (like Grafana/Nextcloud — `forward_auth` breaks Beszel's live-metrics
+WebSocket), with Beszel's own admin as break-glass.
+
+**CA bundle (do this before the hub starts — the compose mounts it).** The OIDC back-channel goes to
+`auth.home.lan` over HTTPS, and the hub image is `scratch`, so it needs Caddy's local CA:
 ```bash
-docker compose -f beszel/docker-compose.yml up -d     # then open https://beszel.home.lan, create admin
-# Add System -> copy the KEY -> put it in beszel/.env as BESZEL_KEY=... (gitignored; see .env.example)
+cd beszel && mkdir -p certs
+cat /etc/ssl/certs/ca-certificates.crt > certs/ca-bundle.crt      # system CAs
+docker cp caddy:/data/caddy/pki/authorities/local/root.crt /tmp/caddy-root.crt
+cat /tmp/caddy-root.crt >> certs/ca-bundle.crt                    # + Caddy's local CA
+docker compose -f docker-compose.yml up -d && cd ..
+```
+Then finish OIDC in the hub UI (`https://beszel.home.lan/_/` → Settings → OAuth2 on the users
+collection): provider OpenID Connect, client id `beszel`, the client secret, and URLs
+`https://auth.home.lan/api/oidc/{authorization,token,userinfo}`. The `USER_CREATION: "true"` env
+(already in the compose) lets Authelia provision the SSO user on first login.
+
+**Agent pairing** — the hub↔agent link uses a key the **hub generates on first run** (`BESZEL_KEY`/
+`BESZEL_TOKEN` in `beszel/.env`, now SOPS-rendered from `beszel/secrets.sops.yaml`):
+```bash
+docker compose -f beszel/docker-compose.yml up -d     # open https://beszel.home.lan, create admin
+# Add System -> copy the KEY -> put it in beszel/.env, then re-encrypt into beszel/secrets.sops.yaml
 docker compose -f beszel/docker-compose.yml up -d --force-recreate beszel-agent
 # in the hub, point the system at host "beszel-agent", port 45876
 ```
@@ -227,7 +244,7 @@ docker compose -f beszel/docker-compose.yml up -d --force-recreate beszel-agent
 ## Secrets (SOPS + age)
 Every credential is committed to this **public** repo - safely - with
 [SOPS](https://github.com/getsops/sops) + [age](https://github.com/FiloSottile/age). Secrets live in
-**per-service** encrypted files, `<service>/secrets.sops.yaml` (authelia/backup/monitoring/
+**per-service** encrypted files, `<service>/secrets.sops.yaml` (authelia/backup/beszel/monitoring/
 nextcloud/technitium); only the **values** are encrypted (each `path` and `mode` stays cleartext, so `git diff`
 shows *which* secret changed, never the value). Per-file (vs one bundle) is the GitOps-idiomatic
 layout and lets a new service's secrets be added from a machine that has only the **public** keys
