@@ -24,7 +24,7 @@ services:
       - "--storage.tsdb.retention.time=30d"
       - "--web.enable-remote-write-receiver"
       - "--web.enable-lifecycle"
-      - "--web.external-url=https://prometheus.home.lan"
+      - "--web.external-url=https://prometheus.home.rusak.eu"
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./prometheus/rules:/etc/prometheus/rules:ro
@@ -117,7 +117,7 @@ services:
     environment:
       TZ: "Europe/Zagreb"
       GF_INSTALL_PLUGINS: "victoriametrics-logs-datasource"
-      GF_SERVER_ROOT_URL: "https://grafana.home.lan"
+      GF_SERVER_ROOT_URL: "https://grafana.home.rusak.eu"
       GF_SERVER_ENFORCE_DOMAIN: "false"
       GF_SECURITY_ADMIN_USER: "admin"
       GF_SECURITY_ADMIN_PASSWORD__FILE: /run/secrets/grafana_admin_password
@@ -136,9 +136,9 @@ services:
       GF_AUTH_GENERIC_OAUTH_SCOPES: "openid profile email groups"
       GF_AUTH_GENERIC_OAUTH_USE_PKCE: "true"
       GF_AUTH_GENERIC_OAUTH_AUTH_STYLE: "InHeader"
-      GF_AUTH_GENERIC_OAUTH_AUTH_URL: "https://auth.home.lan/api/oidc/authorization"
-      GF_AUTH_GENERIC_OAUTH_TOKEN_URL: "https://auth.home.lan/api/oidc/token"
-      GF_AUTH_GENERIC_OAUTH_API_URL: "https://auth.home.lan/api/oidc/userinfo"
+      GF_AUTH_GENERIC_OAUTH_AUTH_URL: "https://auth.home.rusak.eu/api/oidc/authorization"
+      GF_AUTH_GENERIC_OAUTH_TOKEN_URL: "https://auth.home.rusak.eu/api/oidc/token"
+      GF_AUTH_GENERIC_OAUTH_API_URL: "https://auth.home.rusak.eu/api/oidc/userinfo"
       GF_AUTH_GENERIC_OAUTH_LOGIN_ATTRIBUTE_PATH: "preferred_username"
       GF_AUTH_GENERIC_OAUTH_GROUPS_ATTRIBUTE_PATH: "groups"
       GF_AUTH_GENERIC_OAUTH_NAME_ATTRIBUTE_PATH: "name"
@@ -186,7 +186,7 @@ services:
     command:
       - "--config.file=/etc/alertmanager/alertmanager.yml"
       - "--storage.path=/alertmanager"
-      - "--web.external-url=https://alertmanager.home.lan"
+      - "--web.external-url=https://alertmanager.home.rusak.eu"
     volumes:
       - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
       - alertmanager-data:/alertmanager

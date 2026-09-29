@@ -47,15 +47,15 @@ scrape_configs:
       module: ["http_2xx"]
     static_configs:
       - targets:
-          - https://auth.home.lan
-          - https://kuma.home.lan
-          - https://dns.home.lan
-          - https://nextcloud.home
-          - https://grafana.home.lan/api/health
-          - https://dozzle.home.lan
-          - https://prometheus.home.lan
-          - https://alertmanager.home.lan
-          - https://beszel.home.lan
+          - https://auth.home.rusak.eu
+          - https://kuma.home.rusak.eu
+          - https://dns.home.rusak.eu
+          - https://nextcloud.home.rusak.eu
+          - https://grafana.home.rusak.eu/api/health
+          - https://dozzle.home.rusak.eu
+          - https://prometheus.home.rusak.eu
+          - https://alertmanager.home.rusak.eu
+          - https://beszel.home.rusak.eu
     relabel_configs:
       - source_labels: [__address__]
         target_label: __param_target

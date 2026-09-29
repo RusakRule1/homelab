@@ -1,6 +1,9 @@
 services:
   caddy:
-    image: caddy:2.11.4
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: homelab-caddy:2.11.4
     container_name: caddy
     restart: unless-stopped
     security_opt:
@@ -26,21 +29,23 @@ services:
       - "80:80"
       - "443:443"
       - "443:443/udp"
+    env_file:
+      - ./secrets/porkbun.env
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - ./data:/data
     networks:
       proxy:
         aliases:
-          - auth.home.lan
-          - kuma.home.lan
-          - dns.home.lan
-          - nextcloud.home
-          - grafana.home.lan
-          - dozzle.home.lan
-          - prometheus.home.lan
-          - alertmanager.home.lan
-          - beszel.home.lan
+          - auth.home.rusak.eu
+          - kuma.home.rusak.eu
+          - dns.home.rusak.eu
+          - nextcloud.home.rusak.eu
+          - grafana.home.rusak.eu
+          - dozzle.home.rusak.eu
+          - prometheus.home.rusak.eu
+          - alertmanager.home.rusak.eu
+          - beszel.home.rusak.eu
     healthcheck:
       test: ["CMD", "caddy", "version"]
       interval: 30s

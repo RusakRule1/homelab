@@ -1,5 +1,6 @@
 {
 	metrics
+	acme_ca {$ACME_CA:https://acme-v02.api.letsencrypt.org/directory}
 }
 
 (secure_headers) {
@@ -31,85 +32,49 @@
 	}
 }
 
-auth.home.lan {
-	tls internal
-	import secure_headers
-	import logging
-	import compression
-	reverse_proxy authelia:9091
+(tls_porkbun) {
+	tls {
+		dns porkbun {
+			api_key {env.PORKBUN_API_KEY}
+			api_secret_key {env.PORKBUN_API_SECRET_KEY}
+		}
+		resolvers 1.1.1.1 9.9.9.9
+		propagation_delay 2m
+		propagation_timeout 10m
+	}
 }
 
-kuma.home.lan {
-	tls internal
+*.home.rusak.eu {
+	import tls_porkbun
 	import secure_headers
 	import logging
 	import compression
-	import authelia
-	reverse_proxy uptime-kuma:3001
-}
 
-dns.home.lan {
-	tls internal
-	import secure_headers
-	import logging
-	import compression
-	import authelia
-	reverse_proxy technitium:5380
-}
+	@auth host auth.home.rusak.eu
+	handle @auth {
+		reverse_proxy authelia:9091
+	}
 
-nextcloud.home {
-	tls internal
-	import secure_headers
-	import logging
-	import compression
-	redir /.well-known/carddav /remote.php/dav 301
-	redir /.well-known/caldav /remote.php/dav 301
-	reverse_proxy nextcloud:80
-}
+	@kuma host kuma.home.rusak.eu
+	handle @kuma {
+		import authelia
+		reverse_proxy uptime-kuma:3001
+	}
 
-# --- monitoring stack disabled (not in homelab_stacks; Beszel is the active metrics view).
-# --- Re-enable these blocks when the `monitoring` stack is deployed again.
-# grafana.home.lan {
-# 	tls internal
-# 	import secure_headers
-# 	import logging
-# 	import compression
-# 	reverse_proxy grafana:3000
-# }
-#
-# dozzle.home.lan {
-# 	tls internal
-# 	import secure_headers
-# 	import logging
-# 	import compression
-# 	import authelia
-# 	reverse_proxy dozzle:8080
-# }
-#
-# prometheus.home.lan {
-# 	tls internal
-# 	import secure_headers
-# 	import logging
-# 	import compression
-# 	import authelia
-# 	reverse_proxy prometheus:9090
-# }
-#
-# alertmanager.home.lan {
-# 	tls internal
-# 	import secure_headers
-# 	import logging
-# 	import compression
-# 	import authelia
-# 	reverse_proxy alertmanager:9093
-# }
+	@dns host dns.home.rusak.eu
+	handle @dns {
+		import authelia
+		reverse_proxy technitium:5380
+	}
 
-beszel.home.lan {
-	tls internal
-	import secure_headers
-	import logging
-	import compression
-	reverse_proxy beszel:8090
+	@beszel host beszel.home.rusak.eu
+	handle @beszel {
+		reverse_proxy beszel:8090
+	}
+
+	handle {
+		abort
+	}
 }
 
 :2020 {

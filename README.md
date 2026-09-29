@@ -15,7 +15,7 @@ network, and copying data folders.
 ## Architecture
 ```mermaid
 flowchart TB
-    client([LAN client]) -->|HTTPS :443| caddy[Caddy — reverse proxy · local-CA TLS]
+    client([LAN client]) -->|HTTPS :443| caddy[Caddy — reverse proxy · Let's Encrypt wildcard TLS]
     caddy -->|forward_auth| authelia[Authelia — SSO · 2FA · OIDC]
     authelia --- aredis[(authelia-redis)]
 
@@ -40,7 +40,9 @@ flowchart TB
     restic[restic] -->|encrypted · offsite| b2((Backblaze B2))
 ```
 
-A LAN client reaches everything through **Caddy** over HTTPS (built-in local CA). Caddy gates the
+A LAN client reaches everything through **Caddy** over HTTPS (publicly-trusted Let's Encrypt
+wildcard `*.home.rusak.eu`, issued via the ACME DNS-01 challenge through Porkbun — no ports exposed,
+nothing public in DNS). Caddy gates the
 admin UIs (Technitium, Uptime Kuma, Prometheus, Alertmanager, Dozzle) through **Authelia**
 via `forward_auth`, and hands **Nextcloud**, **Grafana**, and **Beszel** their logins via **Authelia OIDC**.
 Databases and caches sit on segmented internal networks with no host ports.
@@ -52,8 +54,11 @@ Databases and caches sit on segmented internal networks with no host ports.
 - Persistent data in `./<service>/data/` (some services keep config in that store too, e.g.
   Technitium's `./technitium/data/`, Kuma's `./uptime-kuma/data/`) - gitignored, copied on migration
 - Secrets as files in `./<service>/secrets/` - gitignored, recreated on migration
-- TLS: Caddy's **local CA + issued certs** live in `./caddy/data/` - gitignored; the CA is
-  per-machine (trust it once per device), certs are auto-issued, nothing to regenerate by hand
+- TLS: Caddy obtains a **publicly-trusted Let's Encrypt wildcard** (`*.home.rusak.eu`) via the
+  ACME **DNS-01** challenge through **Porkbun**; the built Caddy image bundles the `caddy-dns/porkbun`
+  module (`caddy/Dockerfile`). The ACME account + issued certs live in `./caddy/data/` (gitignored) —
+  persist it to avoid re-issuing (rate limits). No per-device CA trust; every client trusts it out of
+  the box
 
 ## Conventions
 - **Pinned exact image versions** (e.g. `caddy:2.11.4`, not `:2` or `:latest`) so updates are deliberate
@@ -70,13 +75,15 @@ Databases and caches sit on segmented internal networks with no host ports.
   runaway container from starving the host
 - **Docker secrets** for credentials - files under `./<service>/secrets/`, mounted at
   `/run/secrets/*` (Technitium admin password, Nextcloud DB/cache/admin, Authelia, Grafana +
-  Alertmanager). Never committed.
+  Alertmanager). Caddy's Porkbun API key/secret are the one env-file exception (the DNS module reads
+  env vars), rendered to `caddy/secrets/porkbun.env`. Never committed.
 - **Shared `proxy` network** (external) - Caddy routes to every web service over it, by
   container name
-- **HTTPS everywhere** - Caddy serves TLS on `:443` using its **built-in local CA**
-  (automatic HTTP→HTTPS redirect) and applies a shared `secure_headers` snippet (HSTS,
-  X-Frame-Options, content-type-nosniff, referrer-policy). Web services are declared as
-  **site blocks in `caddy/Caddyfile`** - no per-container proxy labels.
+- **HTTPS everywhere** - Caddy serves TLS on `:443` from a **publicly-trusted Let's Encrypt
+  wildcard** (`*.home.rusak.eu`, ACME DNS-01 via Porkbun; automatic HTTP→HTTPS redirect) and applies
+  a shared `secure_headers` snippet (HSTS, X-Frame-Options, content-type-nosniff, referrer-policy).
+  Web services are host-matched inside a single `*.home.rusak.eu` block in `caddy/Caddyfile` - no
+  per-container proxy labels.
 - **Backups (disabled by default)** - a `backup/` stack (restic via resticker) pushes
   encrypted, deduplicated snapshots of the stateful bind-mounts to Backblaze B2. It sits
   behind a Compose `profile`, so it starts *only* with `--profile backup up -d` - intended
@@ -91,24 +98,27 @@ Databases and caches sit on segmented internal networks with no host ports.
 ## Services
 | Service     | Purpose                         | Access                              |
 |-------------|---------------------------------|-------------------------------------|
-| Caddy       | Reverse proxy + local TLS       | internal (`:80`/`:443`, no dashboard) |
-| Authelia    | SSO + 2FA (forward_auth + OIDC) | `https://auth.home.lan`             |
-| Technitium  | DNS ad-blocking + native recursion (replaces Pi-hole + Unbound) | `https://dns.home.lan` (SSO) + DNS `:53` |
-| Uptime Kuma | Uptime / status monitoring      | `https://kuma.home.lan` (SSO)       |
-| Nextcloud  | File sync/share (app+DB+cache)  | `https://nextcloud.home`            |
+| Caddy       | Reverse proxy + Let's Encrypt wildcard TLS | internal (`:80`/`:443`, no dashboard) |
+| Authelia    | SSO + 2FA (forward_auth + OIDC) | `https://auth.home.rusak.eu`             |
+| Technitium  | DNS ad-blocking + native recursion (replaces Pi-hole + Unbound) | `https://dns.home.rusak.eu` (SSO) + DNS `:53` |
+| Uptime Kuma | Uptime / status monitoring      | `https://kuma.home.rusak.eu` (SSO)       |
+| Nextcloud  | File sync/share (app+DB+cache)  | `https://nextcloud.home.rusak.eu`            |
 | Postgres   | Nextcloud database              | internal `internal` net (no host port) |
 | Valkey     | Nextcloud cache + file locking  | internal `internal` net (no host port) |
 | Backup      | restic → Backblaze B2 (offsite) | internal — **disabled by default**  |
-| Prometheus  | Metrics TSDB + scraper + alerts | `https://prometheus.home.lan` (SSO) |
+| Prometheus  | Metrics TSDB + scraper + alerts | `https://prometheus.home.rusak.eu` (SSO) |
 | Grafana Alloy | Unified collector (metrics+logs) | internal (`monitoring` net)         |
 | VictoriaLogs | Log store (30d) — replaces Loki | internal (`monitoring` net)         |
-| Grafana     | Dashboards (provisioned as code)| `https://grafana.home.lan` (OIDC)   |
-| Alertmanager| Alert routing → Telegram        | `https://alertmanager.home.lan` (SSO) |
+| Grafana     | Dashboards (provisioned as code)| `https://grafana.home.rusak.eu` (OIDC)   |
+| Alertmanager| Alert routing → Telegram        | `https://alertmanager.home.rusak.eu` (SSO) |
 | Blackbox    | TLS-cert-expiry + endpoint probes | internal (`monitoring` net)       |
-| Dozzle      | Live container-log viewer       | `https://dozzle.home.lan` (SSO)     |
-| Beszel      | Lightweight host + Docker metrics (hub + agent) | `https://beszel.home.lan` (OIDC) |
+| Dozzle      | Live container-log viewer       | `https://dozzle.home.rusak.eu` (SSO)     |
+| Beszel      | Lightweight host + Docker metrics (hub + agent) | `https://beszel.home.rusak.eu` (OIDC) |
 
-Local `*.home` / `*.home.lan` names resolve via `/etc/hosts` entries pointing at this machine.
+`*.home.rusak.eu` names resolve on the LAN via **Technitium split-horizon** (authoritative local zone
+`home.rusak.eu`, wildcard → the host's IP `192.168.1.21`); the public `rusak.eu` zone at Porkbun has
+no such records, so nothing resolves or is reachable from outside. Until the router's DNS points at
+Technitium, a machine can bootstrap with `/etc/hosts` entries → `192.168.1.21`.
 
 **Deployed by default** (`homelab_stacks`): Technitium, Caddy, Authelia, Uptime Kuma, Beszel.
 **Built but off by default** (config kept, not in the playbook — re-add to `homelab_stacks` to
@@ -148,9 +158,11 @@ done
 # 3. enable the repo's git hooks (blocks committing plaintext secrets / age keys)
 git config core.hooksPath .githooks
 
-# 4. local hostnames (LAN-only names resolve via /etc/hosts on this machine)
-echo "127.0.0.1 auth.home.lan kuma.home.lan dns.home.lan nextcloud.home \
-grafana.home.lan prometheus.home.lan alertmanager.home.lan dozzle.home.lan beszel.home.lan" | sudo tee -a /etc/hosts
+# 4. name resolution. End state: a Technitium authoritative zone `home.rusak.eu` with a
+#    wildcard record -> the host IP, and the router's DNS pointed at Technitium. To bootstrap
+#    one machine before that cutover, point the names at the host over /etc/hosts:
+echo "192.168.1.21 auth.home.rusak.eu kuma.home.rusak.eu dns.home.rusak.eu nextcloud.home.rusak.eu \
+grafana.home.rusak.eu prometheus.home.rusak.eu alertmanager.home.rusak.eu dozzle.home.rusak.eu beszel.home.rusak.eu" | sudo tee -a /etc/hosts
 
 # 5. bring up the core stacks (order-independent; proxy net is external).
 #    monitoring + beszel have extra prep - see their sections below.
@@ -159,26 +171,25 @@ for s in technitium caddy authelia uptime-kuma; do
   docker compose -f "$s/docker-compose.yml" up -d
 done
 
-# 6. TLS: trust Caddy's local CA once per device (replaces mkcert)
-docker cp caddy:/data/caddy/pki/authorities/local/root.crt /tmp/caddy-root.crt
-sudo cp /tmp/caddy-root.crt /etc/ca-certificates/trust-source/anchors/caddy-root.crt
-sudo trust extract-compat                              # then restart browsers
+# 6. TLS: nothing to trust per device — Caddy serves a publicly-trusted Let's Encrypt
+#    wildcard. Prereq: caddy/secrets/porkbun.env (the Porkbun API key/secret, rendered from
+#    caddy/secrets.sops.yaml in step 2) must exist before Caddy starts, or ACME DNS-01 can't run.
 ```
 </details>
 
 ### Adding a new web service
-Add a site block to `caddy/Caddyfile`:
+Add a host matcher + `handle` inside the single `*.home.rusak.eu` block in `caddy/Caddyfile`:
 ```caddyfile
-NAME.home.lan {
-    tls internal
-    import secure_headers
-    import compression
+@NAME host NAME.home.rusak.eu
+handle @NAME {
     import authelia          # optional: gate it behind SSO
     reverse_proxy CONTAINER:PORT
 }
 ```
-then add `NAME.home.lan` to `/etc/hosts` and `docker compose -f caddy/docker-compose.yml up -d`.
-Caddy issues the cert automatically on first request - no cert-regeneration step.
+The block-level `tls_porkbun`/`secure_headers`/`compression`/`logging` imports already apply, and the
+existing `*.home.rusak.eu` wildcard cert already covers the name — no per-name issuance. Then add a
+record for `NAME.home.rusak.eu` in Technitium (or an interim `/etc/hosts` entry → the host IP) and
+`docker compose -f caddy/docker-compose.yml up -d`.
 
 ### Backups (optional - server only, disabled by default)
 The `backup/` stack is **not** started by the loop above (it's behind a Compose
@@ -201,10 +212,10 @@ node-exporter + cAdvisor) + **VictoriaLogs** (log store, replaces Loki) + Grafan
 OIDC) + Alertmanager (→ Telegram) + Blackbox + Dozzle (live logs). Bootstrap:
 ```bash
 cd monitoring     # data in named volumes; secrets (grafana admin/oidc, alertmanager telegram) come from the SOPS bundle (step 2)
-# CA bundle so Grafana trusts Caddy's local CA for the OIDC back-channel (Caddy must be up):
-mkdir -p grafana/certs && docker run --rm --entrypoint cat grafana/grafana:13.2.2 /etc/ssl/certs/ca-certificates.crt > grafana/certs/ca-bundle.crt
-docker cp caddy:/data/caddy/pki/authorities/local/root.crt /tmp/caddy-root.crt && cat /tmp/caddy-root.crt >> grafana/certs/ca-bundle.crt
-echo "127.0.0.1 grafana.home.lan prometheus.home.lan alertmanager.home.lan dozzle.home.lan" | sudo tee -a /etc/hosts
+# Grafana trusts the public Let's Encrypt cert via its built-in system CAs — no Caddy-CA bundle
+# needed (drop the grafana/certs mount from monitoring/docker-compose.yml when you re-enable this).
+# Resolve the names via Technitium, or bootstrap with /etc/hosts -> the host IP:
+echo "192.168.1.21 grafana.home.rusak.eu prometheus.home.rusak.eu alertmanager.home.rusak.eu dozzle.home.rusak.eu" | sudo tee -a /etc/hosts
 docker compose -f ../authelia/docker-compose.yml up -d          # picks up the new grafana OIDC client
 docker compose -f ../caddy/docker-compose.yml up -d && docker exec caddy caddy reload --config /etc/caddy/Caddyfile
 docker compose up -d
@@ -218,24 +229,22 @@ The `beszel/` stack is a low-overhead host + Docker metrics view (hub + a per-ho
 **Authelia via OIDC** (like Grafana/Nextcloud — `forward_auth` breaks Beszel's live-metrics
 WebSocket), with Beszel's own admin as break-glass.
 
-**CA bundle (do this before the hub starts — the compose mounts it).** The OIDC back-channel goes to
-`auth.home.lan` over HTTPS, and the hub image is `scratch`, so it needs Caddy's local CA:
+**No CA bundle needed.** The OIDC back-channel goes to `auth.home.rusak.eu` over HTTPS; the hub's
+scratch image already ships the public CA roots (`ca-certificates` copied in at build), so it trusts
+the Let's Encrypt cert out of the box. (The old `certs/ca-bundle.crt` mount existed only to add
+Caddy's *local* CA — obsolete now that certs are publicly trusted.) Just start it:
 ```bash
-cd beszel && mkdir -p certs
-cat /etc/ssl/certs/ca-certificates.crt > certs/ca-bundle.crt      # system CAs
-docker cp caddy:/data/caddy/pki/authorities/local/root.crt /tmp/caddy-root.crt
-cat /tmp/caddy-root.crt >> certs/ca-bundle.crt                    # + Caddy's local CA
-docker compose -f docker-compose.yml up -d && cd ..
+docker compose -f beszel/docker-compose.yml up -d
 ```
-Then finish OIDC in the hub UI (`https://beszel.home.lan/_/` → Settings → OAuth2 on the users
+Then finish OIDC in the hub UI (`https://beszel.home.rusak.eu/_/` → Settings → OAuth2 on the users
 collection): provider OpenID Connect, client id `beszel`, the client secret, and URLs
-`https://auth.home.lan/api/oidc/{authorization,token,userinfo}`. The `USER_CREATION: "true"` env
+`https://auth.home.rusak.eu/api/oidc/{authorization,token,userinfo}`. The `USER_CREATION: "true"` env
 (already in the compose) lets Authelia provision the SSO user on first login.
 
 **Agent pairing** — the hub↔agent link uses a key the **hub generates on first run** (`BESZEL_KEY`/
 `BESZEL_TOKEN` in `beszel/.env`, now SOPS-rendered from `beszel/secrets.sops.yaml`):
 ```bash
-docker compose -f beszel/docker-compose.yml up -d     # open https://beszel.home.lan, create admin
+docker compose -f beszel/docker-compose.yml up -d     # open https://beszel.home.rusak.eu, create admin
 # Add System -> copy the KEY -> put it in beszel/.env, then re-encrypt into beszel/secrets.sops.yaml
 docker compose -f beszel/docker-compose.yml up -d --force-recreate beszel-agent
 # in the hub, point the system at host "beszel-agent", port 45876
@@ -244,8 +253,8 @@ docker compose -f beszel/docker-compose.yml up -d --force-recreate beszel-agent
 ## Secrets (SOPS + age)
 Every credential is committed to this **public** repo - safely - with
 [SOPS](https://github.com/getsops/sops) + [age](https://github.com/FiloSottile/age). Secrets live in
-**per-service** encrypted files, `<service>/secrets.sops.yaml` (authelia/backup/beszel/monitoring/
-nextcloud/technitium); only the **values** are encrypted (each `path` and `mode` stays cleartext, so `git diff`
+**per-service** encrypted files, `<service>/secrets.sops.yaml` (authelia/backup/beszel/caddy/
+monitoring/nextcloud/technitium); only the **values** are encrypted (each `path` and `mode` stays cleartext, so `git diff`
 shows *which* secret changed, never the value). Per-file (vs one bundle) is the GitOps-idiomatic
 layout and lets a new service's secrets be added from a machine that has only the **public** keys
 (`sops encrypt` a new file needs no private key).
@@ -268,9 +277,9 @@ layout and lets a new service's secrets be added from a machine that has only th
 > newlines, modes, binary keys) over hand-editability.
 
 ## Machines
-- **(dev)** Arch Linux laptop - current build machine (single-host "learning mode":
-  `.home`/`.home.lan` names resolve via `/etc/hosts`; Technitium is not the LAN's DNS yet)
-- **(planned)** always-on mini PC - future 24/7 host. Intended shape: **Proxmox** host →
-  a Debian VM → Docker Engine → these Compose stacks (VM over LXC for kernel isolation
-  and clean upgrades). The stack is built to move as-is; see the migration guide in the
-  private `homelab-docs` repo (`architecture/migration-proxmox.md`).
+- **(live)** always-on **Proxmox** host → a single unprivileged **LXC** (`192.168.1.21`) → Docker
+  Engine → these Compose stacks. Deployed by `make bootstrap`; TLS is a publicly-trusted Let's Encrypt
+  wildcard (`*.home.rusak.eu`, DNS-01 via Porkbun) and `home.rusak.eu` resolves on the LAN via
+  Technitium split-horizon. (The earlier VM plan was superseded by the LXC; see the migration notes in
+  the private `homelab-docs` repo.)
+- **(dev)** Arch Linux laptop - build/control machine holding the age key and this repo.

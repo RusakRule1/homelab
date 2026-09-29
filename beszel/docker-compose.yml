@@ -20,7 +20,6 @@ services:
       USER_CREATION: "true"
     volumes:
       - ./data:/beszel_data
-      - ./certs/ca-bundle.crt:/etc/ssl/certs/ca-certificates.crt:ro
     networks:
       - proxy
       - beszel

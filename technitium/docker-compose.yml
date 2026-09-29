@@ -23,7 +23,7 @@ services:
       - "53:53/udp"
     environment:
       TZ: "Europe/Zagreb"
-      DNS_SERVER_DOMAIN: "dns.home.lan"
+      DNS_SERVER_DOMAIN: "dns.home.rusak.eu"
       DNS_SERVER_ADMIN_PASSWORD_FILE: /run/secrets/technitium_admin_password
       DNS_SERVER_WEB_SERVICE_HTTP_PORT: "5380"
       DNS_SERVER_WEB_SERVICE_ENABLE_HTTPS: "false"
