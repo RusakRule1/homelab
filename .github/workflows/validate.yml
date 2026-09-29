@@ -41,8 +41,9 @@ jobs:
 
       - name: caddy validate
         run: |
+          docker build -t homelab-caddy:ci caddy
           docker run --rm -v "$PWD/caddy/Caddyfile:/etc/caddy/Caddyfile:ro" \
-            caddy:2.11.4 caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+            homelab-caddy:ci caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
 
       - name: sops secrets are encrypted
         run: |
